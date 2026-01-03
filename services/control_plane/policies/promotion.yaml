@@ -1,0 +1,23 @@
+quality_gates:
+  min_auc: 0.82
+  min_average_precision: 0.20
+
+drift_policy:
+  on_none:
+    action: noop
+  on_low:
+    action: noop
+  on_medium:
+    action: retrain_and_evaluate
+  on_high:
+    action: retrain_and_evaluate
+
+release_policy:
+  promote_if_quality_gates_pass: true
+  promote_stage: Staging
+  canary_enabled: true
+  canary_max_error_rate: 0.02
+
+rollback_policy:
+  enabled: true
+  rollback_on: [slo_breach, quality_regression]

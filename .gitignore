@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ML artifacts
+mlruns/
+artifacts/
+shared/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Docker
+*.log
+docker-compose.override.yml
+
+# Env
+.env

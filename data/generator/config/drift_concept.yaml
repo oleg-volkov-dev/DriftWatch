@@ -1,0 +1,14 @@
+seed: 42
+n_rows: 5000
+
+drift:
+  type: concept
+  concept_variant: night_merchant
+
+fraud_logic:
+  international_weight: 0.4
+  night_weight: 1.6
+  high_amount_weight: 0.8
+  merchant_risk_weight: 1.7
+  distance_weight: 0.4
+  noise: 0.20

@@ -1,0 +1,92 @@
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.17.2
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    networks: [openml]
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      - MODEL_NAME=${MODEL_NAME:-fraud_detector}
+    ports:
+      - "8000:8000"
+    depends_on: [mlflow]
+    networks: [openml]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks: [openml]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on: [prometheus]
+    networks: [openml]
+
+  training:
+    build:
+      context: .
+      dockerfile: services/training/Dockerfile
+    environment:
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      - MLFLOW_EXPERIMENT_NAME=${MLFLOW_EXPERIMENT_NAME:-fraud-demo}
+      - MODEL_NAME=${MODEL_NAME:-fraud_detector}
+      - DATA_DIR=/app/shared/data
+    volumes:
+      - ./shared:/app/shared
+    depends_on: [mlflow]
+    networks: [openml]
+    profiles: ["jobs"]
+
+  monitoring:
+    build:
+      context: .
+      dockerfile: services/monitoring/Dockerfile
+    environment:
+      - DATA_DIR=/app/shared/data
+      - REPORT_DIR=/app/shared/reports
+    volumes:
+      - ./shared:/app/shared
+    networks: [openml]
+    profiles: ["jobs"]
+
+  control_plane:
+    build:
+      context: .
+      dockerfile: services/control_plane/Dockerfile
+    environment:
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      - MLFLOW_EXPERIMENT_NAME=${MLFLOW_EXPERIMENT_NAME:-fraud-demo}
+      - MODEL_NAME=${MODEL_NAME:-fraud_detector}
+      - DATA_DIR=/app/shared/data
+      - REPORT_DIR=/app/shared/reports
+    volumes:
+      - ./shared:/app/shared
+    depends_on: [mlflow]
+    networks: [openml]
+    profiles: ["jobs"]
+
+networks:
+  openml:
+
+volumes:
+  mlflow_data:

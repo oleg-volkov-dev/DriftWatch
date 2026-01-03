@@ -1,0 +1,17 @@
+seed: 42
+n_rows: 7000
+
+drift:
+  type: shock
+  shock_name: black_friday
+  spike_hours: [20, 21, 22, 23]
+  amount_scale: 2.2
+  fraud_spike_multiplier: 1.35
+
+fraud_logic:
+  international_weight: 1.0
+  night_weight: 1.1
+  high_amount_weight: 1.2
+  merchant_risk_weight: 1.2
+  distance_weight: 0.5
+  noise: 0.22
