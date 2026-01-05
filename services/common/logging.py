@@ -51,7 +51,14 @@ def configure_logging(service_name: str, json_logs: bool = False) -> None:
         format="%(message)s",
         stream=sys.stdout,
         level=logging.INFO,
+        force=True,  # Force reconfiguration even if already configured
     )
+
+    # Silence noisy third-party libraries
+    logging.getLogger("mlflow").setLevel(logging.WARNING)
+    logging.getLogger("git").setLevel(logging.ERROR)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
 
     # Bind service name to all logs from this process
     structlog.contextvars.clear_contextvars()

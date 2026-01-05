@@ -52,19 +52,21 @@ api-logs:
 	docker compose logs -f api
 
 # --- Data generation ---
-PYTHON := $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
-
 gen-base:
-	$(PYTHON) -m data.generator.generate --config data/generator/config/base.yaml --out shared/data/reference.csv
+	docker compose --profile jobs run --rm training \
+	  python -m data.generator.generate --config /app/data/generator/config/base.yaml --out /app/shared/data/reference.csv
 
 gen-feature:
-	$(PYTHON) -m data.generator.generate --config data/generator/config/drift_feature.yaml --out shared/data/current.csv
+	docker compose --profile jobs run --rm training \
+	  python -m data.generator.generate --config /app/data/generator/config/drift_feature.yaml --out /app/shared/data/current.csv
 
 gen-concept:
-	$(PYTHON) -m data.generator.generate --config data/generator/config/drift_concept.yaml --out shared/data/current.csv
+	docker compose --profile jobs run --rm training \
+	  python -m data.generator.generate --config /app/data/generator/config/drift_concept.yaml --out /app/shared/data/current.csv
 
 gen-blackfriday:
-	$(PYTHON) -m data.generator.generate --config data/generator/config/shock_black_friday.yaml --out shared/data/current.csv
+	docker compose --profile jobs run --rm training \
+	  python -m data.generator.generate --config /app/data/generator/config/shock_black_friday.yaml --out /app/shared/data/current.csv
 
 # --- Jobs (docker) ---
 train:
