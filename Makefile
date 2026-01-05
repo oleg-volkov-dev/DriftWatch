@@ -43,7 +43,7 @@ down:
 	docker compose down -v
 
 build:
-	docker compose build
+	docker compose build --no-cache api training monitoring control_plane
 
 logs:
 	docker compose logs -f
