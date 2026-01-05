@@ -14,6 +14,11 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+from services.common.logging import configure_logging, get_logger
+
+configure_logging("training", json_logs=False)
+logger = get_logger(__name__)
+
 
 FEATURES_NUM = [
     "transaction_amount",
@@ -35,9 +40,11 @@ class TrainResult:
 
 
 def load_csv(path: str) -> pd.DataFrame:
+    logger.info("Loading training data", path=path)
     df = pd.read_csv(path)
     df["is_international"] = df["is_international"].astype(bool)
     df["is_fraud"] = df["is_fraud"].astype(bool)
+    logger.info("Data loaded", rows=len(df), fraud_rate=f"{df['is_fraud'].mean():.1%}")
     return df
 
 
@@ -58,6 +65,8 @@ def train_and_log(reference_csv: str) -> TrainResult:
     exp_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", "fraud-demo")
     model_name = os.environ.get("MODEL_NAME", "fraud_detector")
 
+    logger.info("Starting training pipeline", experiment=exp_name, model_name=model_name)
+
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(exp_name)
 
@@ -73,14 +82,21 @@ def train_and_log(reference_csv: str) -> TrainResult:
     X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
     X_test, y_test = X.iloc[test_idx], y.iloc[test_idx]
 
+    logger.info("Dataset split", train_size=len(X_train), test_size=len(X_test))
+
     pipe = build_pipeline()
 
     with mlflow.start_run() as run:
+        logger.info("Training model", run_id=run.info.run_id)
         pipe.fit(X_train, y_train)
+
+        logger.info("Evaluating model on test set")
         proba = pipe.predict_proba(X_test)[:, 1]
 
         auc = float(roc_auc_score(y_test, proba))
         ap = float(average_precision_score(y_test, proba))
+
+        logger.info("Model evaluation complete", auc=f"{auc:.4f}", average_precision=f"{ap:.4f}")
 
         mlflow.log_metric("auc", auc)
         mlflow.log_metric("average_precision", ap)
@@ -88,12 +104,14 @@ def train_and_log(reference_csv: str) -> TrainResult:
         mlflow.log_param("features_num", ",".join(FEATURES_NUM))
         mlflow.log_param("features_bool", ",".join(FEATURES_BOOL))
 
+        logger.info("Registering model to MLflow", model_name=model_name)
         mlflow.sklearn.log_model(
             sk_model=pipe,
             artifact_path="model",
             registered_model_name=model_name,
         )
 
+        logger.info("Training pipeline complete", run_id=run.info.run_id)
         return TrainResult(run_id=run.info.run_id, auc=auc, average_precision=ap)
 
 
@@ -101,18 +119,30 @@ def promote_latest_to_production() -> None:
     tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     model_name = os.environ.get("MODEL_NAME", "fraud_detector")
 
+    logger.info("Promoting latest model to Production", model_name=model_name)
+
     client = MlflowClient(tracking_uri=tracking_uri)
     versions = client.search_model_versions(f"name='{model_name}'")
     if not versions:
+        logger.error("No model versions found", model_name=model_name)
         raise RuntimeError(f"No versions found for model '{model_name}'")
 
     latest = max(versions, key=lambda v: int(v.version))
+    logger.info(
+        "Transitioning model to Production stage",
+        model_name=model_name,
+        version=latest.version,
+        archive_existing=True,
+    )
+
     client.transition_model_version_stage(
         name=model_name,
         version=latest.version,
         stage="Production",
         archive_existing_versions=True,
     )
+
+    logger.info("Model promoted successfully", model_name=model_name, version=latest.version, stage="Production")
 
 
 def main() -> None:

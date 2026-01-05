@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
@@ -8,6 +9,12 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import yaml
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from services.common.logging import configure_logging, get_logger
+
+configure_logging("data_generator", json_logs=False)
+logger = get_logger(__name__)
 
 
 FEATURES = [
@@ -48,6 +55,13 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
     drift = cfg.get("drift", {"type": "none"})
     drift_type = drift.get("type", "none")
 
+    logger.info(
+        "Starting data generation",
+        n_rows=n,
+        seed=seed,
+        drift_type=drift_type,
+    )
+
     # Base feature distributions
     transaction_hour = rng.integers(0, 24, size=n)
     customer_age = np.clip(rng.normal(38, 12, size=n).round(), 18, 90).astype(int)
@@ -59,16 +73,36 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
 
     # Drift: feature distribution changes
     if drift_type == "feature":
-        transaction_amount = np.clip(transaction_amount * float(drift.get("amount_scale", 1.0)), 1, 10000)
-        geo_distance_km = np.clip(geo_distance_km * float(drift.get("distance_scale", 1.0)), 0, 5000)
-        merchant_risk_score = np.clip(merchant_risk_score + float(drift.get("merchant_risk_shift", 0.0)), 0, 1)
+        amount_scale = float(drift.get("amount_scale", 1.0))
+        distance_scale = float(drift.get("distance_scale", 1.0))
+        risk_shift = float(drift.get("merchant_risk_shift", 0.0))
+
+        transaction_amount = np.clip(transaction_amount * amount_scale, 1, 10000)
+        geo_distance_km = np.clip(geo_distance_km * distance_scale, 0, 5000)
+        merchant_risk_score = np.clip(merchant_risk_score + risk_shift, 0, 1)
+
+        logger.info(
+            "Applied feature drift",
+            amount_scale=amount_scale,
+            distance_scale=distance_scale,
+            merchant_risk_shift=risk_shift,
+        )
 
     # Shock: specific time-window spike
     if drift_type == "shock" and drift.get("shock_name") == "black_friday":
         spike_hours = set(drift.get("spike_hours", [20, 21, 22, 23]))
         is_spike = np.array([h in spike_hours for h in transaction_hour])
-        transaction_amount = transaction_amount * np.where(is_spike, float(drift.get("amount_scale", 2.0)), 1.0)
+        amount_scale = float(drift.get("amount_scale", 2.0))
+        transaction_amount = transaction_amount * np.where(is_spike, amount_scale, 1.0)
         transaction_amount = np.clip(transaction_amount, 1, 15000)
+
+        logger.info(
+            "Applied shock event",
+            shock_name="black_friday",
+            spike_hours=sorted(spike_hours),
+            amount_scale=amount_scale,
+            affected_transactions=int(is_spike.sum()),
+        )
 
     logic_cfg = cfg.get("fraud_logic", {})
     logic = FraudLogic(**logic_cfg)
@@ -112,6 +146,15 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
             "is_fraud": is_fraud.astype(bool),
         }
     )
+
+    fraud_rate = float(is_fraud.mean())
+    logger.info(
+        "Data generation complete",
+        total_transactions=n,
+        fraud_count=int(is_fraud.sum()),
+        fraud_rate=f"{fraud_rate:.1%}",
+    )
+
     return df
 
 
@@ -121,12 +164,16 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
+    logger.info("Loading configuration", config_path=args.config)
     cfg = _load_config(args.config)
+
     df = generate_df(cfg)
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_path, index=False)
+
+    logger.info("Dataset saved", output_path=str(out_path), size_mb=f"{out_path.stat().st_size / 1024 / 1024:.2f}")
 
 
 if __name__ == "__main__":

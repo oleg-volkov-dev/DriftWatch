@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field
 from prometheus_client import Counter, Histogram, generate_latest
 from starlette.responses import Response
 
+from services.common.logging import configure_logging, get_logger
+
+configure_logging("api", json_logs=False)
+logger = get_logger(__name__)
 
 MODEL_NAME = os.environ.get("MODEL_NAME", "fraud_detector")
 MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -43,23 +47,27 @@ _model_stage: Optional[str] = None
 def _load_model() -> None:
     global _model, _model_stage
 
+    logger.info("Loading model from MLflow", model_name=MODEL_NAME, tracking_uri=MLFLOW_TRACKING_URI)
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
     stage_uri = f"models:/{MODEL_NAME}/Production"
     try:
         _model = mlflow.pyfunc.load_model(stage_uri)
         _model_stage = "Production"
+        logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="Production")
         return
     except Exception:
-        pass
+        logger.debug("Production model not found, trying latest")
 
     latest_uri = f"models:/{MODEL_NAME}/latest"
     try:
         _model = mlflow.pyfunc.load_model(latest_uri)
         _model_stage = "latest"
+        logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="latest")
     except Exception:
         _model = None
         _model_stage = "none"
+        logger.warning("No model found in MLflow", model_name=MODEL_NAME)
 
 
 @asynccontextmanager
@@ -87,6 +95,7 @@ def predict(txn: Txn):
 
     if _model is None:
         ERRORS.inc()
+        logger.error("Prediction request rejected - no model loaded")
         return Response(
             content='{"error":"No model loaded. Train and register a model first."}',
             status_code=503,
@@ -98,13 +107,24 @@ def predict(txn: Txn):
             df = pd.DataFrame([txn.model_dump()])
             score = float(_model.predict(df)[0])
             proba = max(0.0, min(1.0, score))
-            return Pred(
+
+            result = Pred(
                 fraud_probability=proba,
                 is_fraud=proba >= 0.5,
                 model_stage=_model_stage,
             )
+
+            logger.debug(
+                "Prediction made",
+                fraud_probability=f"{proba:.3f}",
+                is_fraud=result.is_fraud,
+                model_stage=_model_stage,
+            )
+
+            return result
         except Exception as e:
             ERRORS.inc()
+            logger.error("Prediction failed", error=str(e), exc_info=True)
             return Response(
                 content=f'{{"error":"{str(e)}"}}',
                 status_code=500,
