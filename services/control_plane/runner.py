@@ -34,7 +34,9 @@ def main() -> None:
     (events_dir / "sentinel_report.json").write_text(
         json.dumps(sentinel_report.__dict__, indent=2), encoding="utf-8"
     )
-    (events_dir / "execution_plan.json").write_text(json.dumps(plan_obj.__dict__, indent=2), encoding="utf-8")
+    (events_dir / "execution_plan.json").write_text(
+        json.dumps(plan_obj.__dict__, indent=2), encoding="utf-8"
+    )
 
     if plan_obj.action == "retrain_and_evaluate":
         logger.info("Phase 3: Executing retraining")
@@ -54,7 +56,10 @@ def main() -> None:
         if release_res.promoted:
             logger.info("Control plane cycle complete - model promoted", stage=release_res.stage)
         else:
-            logger.warning("Control plane cycle complete - promotion blocked", reason=release_res.details.get("reason"))
+            logger.warning(
+                "Control plane cycle complete - promotion blocked",
+                reason=release_res.details.get("reason"),
+            )
     else:
         logger.info("Control plane cycle complete - no action taken", action=plan_obj.action)
 

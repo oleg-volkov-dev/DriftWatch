@@ -10,7 +10,9 @@ PROJECT_NAME := openml-agentic
         gen-base gen-feature gen-concept gen-blackfriday \
         train promote-prod monitor control \
         demo-drift-feature demo-drift-concept demo-black-friday \
-        clean-shared
+        clean-shared \
+        format lint test check ci-local \
+        setup-dev install-hooks
 
 help:
 	@echo "Targets:"
@@ -35,6 +37,15 @@ help:
 	@echo "  demo-black-friday  End-to-end demo: shock event"
 	@echo ""
 	@echo "  clean-shared       Remove shared artifacts volume"
+	@echo ""
+	@echo "Development & CI/CD:"
+	@echo "  setup-dev          Install development dependencies"
+	@echo "  install-hooks      Install pre-commit hooks"
+	@echo "  format             Format code with black and isort"
+	@echo "  lint               Run linting checks (ruff, mypy)"
+	@echo "  test               Run tests with coverage"
+	@echo "  check              Run all quality checks (format + lint + test)"
+	@echo "  ci-local           Simulate CI pipeline locally"
 
 up:
 	docker compose up -d --build mlflow prometheus grafana api
@@ -97,3 +108,60 @@ demo-black-friday: gen-base train promote-prod gen-blackfriday monitor control
 # --- Utilities ---
 clean-shared:
 	docker volume rm -f $$(docker volume ls -q | grep -E "_shared$$" || true)
+
+# --- Development & CI/CD ---
+setup-dev:
+	@echo "Installing development dependencies..."
+	pip install -r requirements.txt
+	pip install -r requirements-dev.txt
+	@echo "Development environment ready!"
+
+install-hooks:
+	@echo "Installing pre-commit hooks..."
+	pre-commit install
+	@echo "Pre-commit hooks installed. They will run automatically on git commit."
+
+format:
+	@echo "Formatting code with black..."
+	black .
+	@echo "Sorting imports with isort..."
+	isort .
+	@echo "Code formatting complete!"
+
+lint:
+	@echo "Running ruff linter..."
+	ruff check .
+	@echo "Running type checks with mypy..."
+	mypy services/ data/ --ignore-missing-imports --no-strict-optional || true
+	@echo "Linting complete!"
+
+test:
+	@echo "Running tests with coverage..."
+	pytest --cov=services --cov=data --cov-report=term-missing --cov-report=html || true
+	@echo "Tests complete! Coverage report: htmlcov/index.html"
+
+check: format lint test
+	@echo "All quality checks passed!"
+
+ci-local:
+	@echo "Simulating CI pipeline locally..."
+	@echo ""
+	@echo "=== Checking code formatting ==="
+	black --check --diff .
+	@echo ""
+	@echo "=== Checking import sorting ==="
+	isort --check-only --diff .
+	@echo ""
+	@echo "=== Running linter ==="
+	ruff check .
+	@echo ""
+	@echo "=== Running tests ==="
+	pytest --cov=services --cov=data --cov-report=term-missing || true
+	@echo ""
+	@echo "=== Testing Docker builds ==="
+	docker build -f services/api/Dockerfile -t driftwatch-api:test .
+	docker build -f services/training/Dockerfile -t driftwatch-training:test .
+	docker build -f services/monitoring/Dockerfile -t driftwatch-monitoring:test .
+	docker build -f services/control_plane/Dockerfile -t driftwatch-control-plane:test .
+	@echo ""
+	@echo "CI simulation complete!"

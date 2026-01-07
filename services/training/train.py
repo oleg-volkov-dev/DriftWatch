@@ -142,7 +142,12 @@ def promote_latest_to_production() -> None:
         archive_existing_versions=True,
     )
 
-    logger.info("Model promoted successfully", model_name=model_name, version=latest.version, stage="Production")
+    logger.info(
+        "Model promoted successfully",
+        model_name=model_name,
+        version=latest.version,
+        stage="Production",
+    )
 
 
 def main() -> None:

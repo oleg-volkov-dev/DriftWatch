@@ -34,7 +34,9 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
         logger.error("Experiment not found", experiment_name=exp_name)
         return ReleaseResult(False, None, {"reason": "experiment_not_found"})
 
-    runs = client.search_runs([exp.experiment_id], order_by=["attributes.start_time DESC"], max_results=1)
+    runs = client.search_runs(
+        [exp.experiment_id], order_by=["attributes.start_time DESC"], max_results=1
+    )
     if not runs:
         logger.error("No training runs found", experiment_id=exp.experiment_id)
         return ReleaseResult(False, None, {"reason": "no_runs"})
@@ -43,7 +45,12 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
     auc = float(run.data.metrics.get("auc", 0.0))
     ap = float(run.data.metrics.get("average_precision", 0.0))
 
-    logger.info("Latest model metrics retrieved", run_id=run.info.run_id, auc=f"{auc:.4f}", average_precision=f"{ap:.4f}")
+    logger.info(
+        "Latest model metrics retrieved",
+        run_id=run.info.run_id,
+        auc=f"{auc:.4f}",
+        average_precision=f"{ap:.4f}",
+    )
 
     gates = policy.get("quality_gates", {})
     min_auc = float(gates.get("min_auc", 0.0))
@@ -63,7 +70,13 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
         return ReleaseResult(
             False,
             None,
-            {"reason": "quality_gates_failed", "auc": auc, "ap": ap, "min_auc": min_auc, "min_ap": min_ap},
+            {
+                "reason": "quality_gates_failed",
+                "auc": auc,
+                "ap": ap,
+                "min_auc": min_auc,
+                "min_ap": min_ap,
+            },
         )
 
     rel = policy.get("release_policy", {})

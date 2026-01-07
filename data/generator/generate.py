@@ -130,7 +130,9 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
     if drift_type == "shock" and drift.get("shock_name") == "black_friday":
         spike_hours = set(drift.get("spike_hours", [20, 21, 22, 23]))
         is_spike = np.array([h in spike_hours for h in transaction_hour])
-        prob = np.clip(prob * np.where(is_spike, float(drift.get("fraud_spike_multiplier", 1.2)), 1.0), 0, 1)
+        prob = np.clip(
+            prob * np.where(is_spike, float(drift.get("fraud_spike_multiplier", 1.2)), 1.0), 0, 1
+        )
 
     is_fraud = rng.random(size=n) < prob
 
@@ -173,7 +175,11 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_path, index=False)
 
-    logger.info("Dataset saved", output_path=str(out_path), size_mb=f"{out_path.stat().st_size / 1024 / 1024:.2f}")
+    logger.info(
+        "Dataset saved",
+        output_path=str(out_path),
+        size_mb=f"{out_path.stat().st_size / 1024 / 1024:.2f}",
+    )
 
 
 if __name__ == "__main__":

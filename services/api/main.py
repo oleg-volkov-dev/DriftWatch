@@ -7,8 +7,8 @@ from typing import Optional
 import mlflow
 import pandas as pd
 from fastapi import FastAPI
-from pydantic import BaseModel, Field
 from prometheus_client import Counter, Histogram, generate_latest
+from pydantic import BaseModel, Field
 from starlette.responses import Response
 
 from services.common.logging import configure_logging, get_logger
@@ -47,7 +47,9 @@ _model_stage: Optional[str] = None
 def _load_model() -> None:
     global _model, _model_stage
 
-    logger.info("Loading model from MLflow", model_name=MODEL_NAME, tracking_uri=MLFLOW_TRACKING_URI)
+    logger.info(
+        "Loading model from MLflow", model_name=MODEL_NAME, tracking_uri=MLFLOW_TRACKING_URI
+    )
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
     stage_uri = f"models:/{MODEL_NAME}/Production"

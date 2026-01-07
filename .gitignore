@@ -4,6 +4,23 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+*.pyc
+*.pyo
+*.pyd
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+
+# Linting & Type Checking
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
 
 # ML artifacts
 mlruns/
@@ -22,3 +39,6 @@ docker-compose.override.yml
 
 # Env
 .env
+
+# AI artifacts
+.claude/

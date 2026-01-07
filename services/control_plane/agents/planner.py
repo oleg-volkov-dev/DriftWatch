@@ -25,7 +25,11 @@ def load_policy(policy_path: str) -> Dict[str, Any]:
 
 
 def plan(report: SentinelReport, policy_path: str) -> ExecutionPlan:
-    logger.info("Planner agent analyzing sentinel report", incident_type=report.incident_type, severity=report.severity)
+    logger.info(
+        "Planner agent analyzing sentinel report",
+        incident_type=report.incident_type,
+        severity=report.severity,
+    )
 
     policy = load_policy(policy_path)
     drift_policy = policy.get("drift_policy", {})
