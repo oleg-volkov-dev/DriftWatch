@@ -4,7 +4,7 @@ SHELL := /bin/bash
 -include .env
 export
 
-PROJECT_NAME := openml-agentic
+PROJECT_NAME := driftwatch
 
 .PHONY: help up down build logs api-logs \
         gen-base gen-feature gen-concept gen-blackfriday \

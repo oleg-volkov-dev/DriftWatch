@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openml-agentic"
+name = "driftwatch"
 version = "0.1.0"
-description = "Agentic MLOps platform with synthetic fraud data"
+description = "Autonomous MLOps platform for fraud detection with policy-driven drift response"
 requires-python = ">=3.11"
 dependencies = []
 

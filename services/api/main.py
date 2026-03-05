@@ -6,7 +6,7 @@ from typing import Optional
 
 import mlflow
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from prometheus_client import Counter, Histogram, generate_latest
 from starlette.responses import Response
@@ -76,6 +76,21 @@ def health():
     return {"ok": True, "model": MODEL_NAME, "stage": _model_stage}
 
 
+@app.post("/reload")
+def reload():
+    """Reload the model from MLflow registry (picks up latest Production model)."""
+    try:
+        _load_model()
+        return {
+            "ok": True,
+            "model": MODEL_NAME,
+            "stage": _model_stage,
+            "message": f"Model reloaded successfully (stage: {_model_stage})",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reload model: {str(e)}")
+
+
 @app.get("/metrics")
 def metrics():
     return Response(generate_latest(), media_type="text/plain; version=0.0.4")
@@ -87,10 +102,9 @@ def predict(txn: Txn):
 
     if _model is None:
         ERRORS.inc()
-        return Response(
-            content='{"error":"No model loaded. Train and register a model first."}',
+        raise HTTPException(
             status_code=503,
-            media_type="application/json",
+            detail="No model loaded. Train and register a model first.",
         )
 
     with LATENCY.time():
@@ -105,8 +119,4 @@ def predict(txn: Txn):
             )
         except Exception as e:
             ERRORS.inc()
-            return Response(
-                content=f'{{"error":"{str(e)}"}}',
-                status_code=500,
-                media_type="application/json",
-            )
+            raise HTTPException(status_code=500, detail=str(e))
