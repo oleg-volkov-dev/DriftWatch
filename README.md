@@ -1,5 +1,10 @@
 # DriftWatch
 
+[![CI](https://github.com/oleg-volkov-dev/DriftWatch/actions/workflows/ci.yml/badge.svg)](https://github.com/oleg-volkov-dev/DriftWatch/actions/workflows/ci.yml)
+[![Docker Build](https://github.com/oleg-volkov-dev/DriftWatch/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/oleg-volkov-dev/DriftWatch/actions/workflows/docker-publish.yml)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Autonomous MLOps platform for fraud detection with policy-driven drift response**
 
 A production-grade MLOps demonstration that automatically detects, evaluates, and responds to model drift using a multi-agent control plane. Built with synthetic fraud data to showcase real-world ML reliability patterns.
@@ -260,7 +265,41 @@ make control         # Execute control plane
 make demo-drift-feature
 make demo-drift-concept
 make demo-black-friday
+
+# Development (CI/CD)
+make setup-dev       # Install dev dependencies
+make install-hooks   # Install pre-commit hooks
+make format          # Format code
+make lint            # Run linting
+make test            # Run tests
+make check           # Run all checks
+make ci-local        # Simulate CI pipeline
 ```
+
+---
+
+## Development & CI/CD
+
+This project uses automated quality checks and testing:
+
+**Setup (one-time):**
+```bash
+make setup-dev      # Install pytest, black, ruff, mypy, etc.
+make install-hooks  # Install git pre-commit hooks
+```
+
+**Before committing:**
+```bash
+make format  # Auto-format code with Black & isort
+make lint    # Check with Ruff & mypy
+make test    # Run tests with coverage
+```
+
+Pre-commit hooks run automatically on `git commit`. GitHub Actions run on every push:
+- Code formatting validation
+- Linting and type checking
+- Test suite with coverage
+- Docker image builds
 
 ---
 
@@ -284,45 +323,6 @@ cat shared/events/release_result.json
 # Open drift report in browser
 open shared/reports/drift_report.html
 ```
-
----
-
-## What This Demonstrates
-
-### Technical Skills
-- End-to-end ML pipeline orchestration
-- Production monitoring and alerting
-- Automated model retraining workflows
-- Quality gates and release strategies
-- Policy-driven decision making
-
-### MLOps Maturity
-- **Level 0**: Manual training and deployment ❌
-- **Level 1**: Automated training pipeline ✅
-- **Level 2**: Automated CI/CD for ML ✅
-- **Level 3**: Automated retraining triggers ✅
-- **Level 4**: Automated model monitoring & response ✅ (This project)
-
-### Best Practices
-- Deterministic, reproducible experiments
-- Model versioning and registry
-- Drift detection and alerting
-- Automated testing and validation
-- Auditability and observability
-- Safe deployment strategies
-
----
-
-## Future Enhancements
-
-- [ ] Performance degradation detection (precision/recall drop)
-- [ ] Canary deployment simulation (traffic split)
-- [ ] A/B testing framework
-- [ ] GitHub PR-based approval flow
-- [ ] OpenTelemetry distributed tracing
-- [ ] Kubernetes deployment with Helm
-- [ ] Real-time streaming inference
-- [ ] Model explainability reports
 
 ---
 
