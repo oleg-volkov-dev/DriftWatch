@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-from data.generator.generate import FEATURES, FraudLogic, _sigmoid, generate_df
+from data.generator.generate import FEATURES, _sigmoid, generate_df
 
 BASE_CFG = {
     "seed": 42,

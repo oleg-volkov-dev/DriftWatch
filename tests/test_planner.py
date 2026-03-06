@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from services.control_plane.agents.planner import ExecutionPlan, load_policy, plan
 from services.control_plane.agents.sentinel import SentinelReport
 
