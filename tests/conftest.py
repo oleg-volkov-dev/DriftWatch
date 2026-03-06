@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock
-from pathlib import Path
 
 import pytest
 
