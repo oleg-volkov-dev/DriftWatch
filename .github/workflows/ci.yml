@@ -52,15 +52,11 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-asyncio httpx
+        pip install -r requirements.txt -r requirements-dev.txt
 
     - name: Run tests with coverage
       run: |
-        # Create tests directory if it doesn't exist
-        mkdir -p tests
-        # Run pytest (will pass if no tests found for now)
-        pytest --cov=services --cov=data --cov-report=xml --cov-report=term-missing || true
+        pytest --cov=services --cov=data --cov-report=xml --cov-report=term-missing
 
     - name: Upload coverage reports
       uses: codecov/codecov-action@v4
