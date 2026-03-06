@@ -87,7 +87,12 @@ class TestGenerateDfFeatureDrift:
 
         drift_cfg = {
             **BASE_CFG,
-            "drift": {"type": "feature", "amount_scale": 3.0, "distance_scale": 1.0, "merchant_risk_shift": 0.0},
+            "drift": {
+                "type": "feature",
+                "amount_scale": 3.0,
+                "distance_scale": 1.0,
+                "merchant_risk_shift": 0.0,
+            },
         }
         drifted_df = generate_df(drift_cfg)
 
@@ -98,7 +103,12 @@ class TestGenerateDfFeatureDrift:
 
         drift_cfg = {
             **BASE_CFG,
-            "drift": {"type": "feature", "amount_scale": 1.0, "distance_scale": 1.0, "merchant_risk_shift": 0.3},
+            "drift": {
+                "type": "feature",
+                "amount_scale": 1.0,
+                "distance_scale": 1.0,
+                "merchant_risk_shift": 0.3,
+            },
         }
         drifted_df = generate_df(drift_cfg)
 
@@ -109,7 +119,12 @@ class TestGenerateDfFeatureDrift:
 
         drift_cfg = {
             **BASE_CFG,
-            "drift": {"type": "feature", "amount_scale": 1.0, "distance_scale": 5.0, "merchant_risk_shift": 0.0},
+            "drift": {
+                "type": "feature",
+                "amount_scale": 1.0,
+                "distance_scale": 5.0,
+                "merchant_risk_shift": 0.0,
+            },
         }
         drifted_df = generate_df(drift_cfg)
 
@@ -118,7 +133,12 @@ class TestGenerateDfFeatureDrift:
     def test_amounts_stay_within_clipped_bounds(self) -> None:
         drift_cfg = {
             **BASE_CFG,
-            "drift": {"type": "feature", "amount_scale": 100.0, "distance_scale": 1.0, "merchant_risk_shift": 0.0},
+            "drift": {
+                "type": "feature",
+                "amount_scale": 100.0,
+                "distance_scale": 1.0,
+                "merchant_risk_shift": 0.0,
+            },
         }
         df = generate_df(drift_cfg)
         assert (df["transaction_amount"] <= 10000).all()

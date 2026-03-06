@@ -20,9 +20,7 @@ class TestRunSentinelMissingSummary:
 
 class TestRunSentinelWithSummary:
     @pytest.mark.parametrize("severity", ["none", "low"])
-    def test_no_action_for_low_severity(
-        self, severity: str, monitoring_summary_factory
-    ) -> None:
+    def test_no_action_for_low_severity(self, severity: str, monitoring_summary_factory) -> None:
         report_dir = monitoring_summary_factory(severity=severity)
 
         result = run_sentinel(report_dir=str(report_dir))
@@ -44,7 +42,9 @@ class TestRunSentinelWithSummary:
         assert result.recommended_action == "retrain_and_evaluate"
 
     def test_evidence_contains_summary_data(self, monitoring_summary_factory) -> None:
-        report_dir = monitoring_summary_factory(severity="medium", drift_ratio=0.4, drifted_features=3)
+        report_dir = monitoring_summary_factory(
+            severity="medium", drift_ratio=0.4, drifted_features=3
+        )
 
         result = run_sentinel(report_dir=str(report_dir))
 
@@ -53,7 +53,9 @@ class TestRunSentinelWithSummary:
         assert result.evidence["severity"] == "medium"
 
     def test_none_severity_evidence_has_summary(self, monitoring_summary_factory) -> None:
-        report_dir = monitoring_summary_factory(severity="none", drift_ratio=0.0, drifted_features=0)
+        report_dir = monitoring_summary_factory(
+            severity="none", drift_ratio=0.0, drifted_features=0
+        )
 
         result = run_sentinel(report_dir=str(report_dir))
 

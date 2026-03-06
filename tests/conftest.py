@@ -14,6 +14,7 @@ import pytest
 # any service module is imported so that module-level imports succeed.
 # ---------------------------------------------------------------------------
 
+
 def _stub_module(name: str, **attrs) -> MagicMock:
     """Register a MagicMock stub in sys.modules if not already present."""
     if name not in sys.modules:
@@ -79,4 +80,6 @@ def monitoring_summary_factory(tmp_report_dir: Path):
 @pytest.fixture()
 def promotion_policy_path() -> str:
     """Return absolute path to the real promotion policy YAML."""
-    return str(Path(__file__).parent.parent / "services" / "control_plane" / "policies" / "promotion.yaml")
+    return str(
+        Path(__file__).parent.parent / "services" / "control_plane" / "policies" / "promotion.yaml"
+    )

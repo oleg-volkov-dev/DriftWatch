@@ -8,8 +8,7 @@ from services.monitoring.run_monitoring import compute_drift_severity
 def _make_report(drifted_cols: list[str], all_cols: list[str]) -> dict:
     """Build a minimal Evidently-style report dict for testing."""
     drift_by_columns = {
-        col: {"drift_detected": col in drifted_cols, "stattest_name": "ks"}
-        for col in all_cols
+        col: {"drift_detected": col in drifted_cols, "stattest_name": "ks"} for col in all_cols
     }
     return {
         "metrics": [
