@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-
 VALID_TXN = {
     "transaction_amount": 150.0,
     "transaction_hour": 14,
