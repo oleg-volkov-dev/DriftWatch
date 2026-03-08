@@ -67,10 +67,10 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
     transaction_hour = rng.integers(0, 24, size=n)
     customer_age = np.clip(rng.normal(38, 12, size=n).round(), 18, 90).astype(int)
     account_tenure_days = np.clip(rng.gamma(2.0, 180.0, size=n).round(), 1, 3650).astype(int) # Skew to the right, most accounts are young, cap 10years
-    merchant_risk_score = np.clip(rng.beta(2, 5, size=n) + 0.05, 0, 1) # Skew to the left, most merchants are low risk
-    geo_distance_km = np.clip(rng.lognormal(mean=3.2, sigma=0.7, size=n), 0, 2000) # Actual median distance = e^3.2 ~ 24.5km, cap 2000km
-    is_international = rng.random(size=n) < 0.12 # 12% of being an international transaction
-    transaction_amount = np.clip(rng.lognormal(mean=4.2, sigma=0.6, size=n), 1, 5000) # Skew to the right, most transactions are tens of dollars
+    merchant_risk_score = np.clip(rng.beta(2, 5, size=n) + 0.05, 0, 1)                        # Skew to the left, most merchants are low risk
+    geo_distance_km = np.clip(rng.lognormal(mean=3.2, sigma=0.7, size=n), 0, 2000)            # Actual median distance = e^3.2 ~ 24.5km, cap 2000km
+    is_international = rng.random(size=n) < 0.12                                              # 12% of being an international transaction
+    transaction_amount = np.clip(rng.lognormal(mean=4.2, sigma=0.6, size=n), 1, 5000)         # Skew to the right, most transactions are tens of dollars
 
     # Feature distribution changes 
     # Scaling up/down certain colums, trying to simulate how real data slowly changes over time

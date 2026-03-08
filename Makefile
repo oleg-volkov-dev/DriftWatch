@@ -41,7 +41,7 @@ help:
 	@echo "Development & CI/CD:"
 	@echo "  setup-dev          Install development dependencies"
 	@echo "  install-hooks      Install pre-commit hooks"
-	@echo "  format             Format code with black and isort"
+	@echo "  format             Sort imports with isort"
 	@echo "  lint               Run linting checks (ruff, mypy)"
 	@echo "  test               Run tests with coverage"
 	@echo "  check              Run all quality checks (format + lint + test)"
@@ -122,11 +122,9 @@ install-hooks:
 	@echo "Pre-commit hooks installed. They will run automatically on git commit."
 
 format:
-	@echo "Formatting code with black..."
-	black .
 	@echo "Sorting imports with isort..."
 	isort .
-	@echo "Code formatting complete!"
+	@echo "Import sorting complete!"
 
 lint:
 	@echo "Running ruff linter..."
@@ -145,9 +143,6 @@ check: format lint test
 
 ci-local:
 	@echo "Simulating CI pipeline locally..."
-	@echo ""
-	@echo "=== Checking code formatting ==="
-	black --check --diff .
 	@echo ""
 	@echo "=== Checking import sorting ==="
 	isort --check-only --diff .
