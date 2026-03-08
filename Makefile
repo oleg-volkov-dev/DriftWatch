@@ -12,7 +12,7 @@ PROJECT_NAME := driftwatch
         demo-drift-feature demo-drift-concept demo-black-friday \
         clean-shared \
         format lint test check ci-local \
-        setup-dev install-hooks
+        setup-dev install-hooks dashboard
 
 help:
 	@echo "Targets:"
@@ -39,6 +39,7 @@ help:
 	@echo "  clean-shared       Remove shared artifacts volume"
 	@echo ""
 	@echo "Development & CI/CD:"
+	@echo "  dashboard          Open the service dashboard in browser"
 	@echo "  setup-dev          Install development dependencies"
 	@echo "  install-hooks      Install pre-commit hooks"
 	@echo "  format             Sort imports with isort"
@@ -47,11 +48,20 @@ help:
 	@echo "  check              Run all quality checks (format + lint + test)"
 	@echo "  ci-local           Simulate CI pipeline locally"
 
+dashboard:
+	@-[ -f .dashboard.pid ] && kill $$(cat .dashboard.pid) 2>/dev/null; rm -f .dashboard.pid
+	@python3 infra/dashboard/server.py & echo $$! > .dashboard.pid
+	@sleep 0.4 && open http://localhost:8765
+
 up:
 	docker compose up -d --build mlflow prometheus grafana api
+	@-[ -f .dashboard.pid ] && kill $$(cat .dashboard.pid) 2>/dev/null; rm -f .dashboard.pid
+	@python3 infra/dashboard/server.py & echo $$! > .dashboard.pid
+	@sleep 0.4 && open http://localhost:8765
 
 down:
 	docker compose down -v
+	@-[ -f .dashboard.pid ] && kill $$(cat .dashboard.pid) 2>/dev/null; rm -f .dashboard.pid
 
 build:
 	docker compose build --no-cache api training monitoring control_plane

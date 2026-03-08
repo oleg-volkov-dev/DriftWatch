@@ -58,18 +58,18 @@ def _load_model() -> None:
         _model_stage = "Production"
         logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="Production")
         return
-    except Exception:
-        logger.debug("Production model not found, trying latest")
+    except Exception as e:
+        logger.warning("Production model failed to load, trying latest", error=str(e))
 
     latest_uri = f"models:/{MODEL_NAME}/latest"
     try:
         _model = mlflow.pyfunc.load_model(latest_uri)
         _model_stage = "latest"
         logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="latest")
-    except Exception:
+    except Exception as e:
         _model = None
         _model_stage = "none"
-        logger.warning("No model found in MLflow", model_name=MODEL_NAME)
+        logger.warning("No model found in MLflow", model_name=MODEL_NAME, error=str(e))
 
 
 @asynccontextmanager
@@ -115,7 +115,7 @@ def predict(txn: Txn):
         return Response(
             content='{"error":"No model loaded. Train and register a model first."}',
             status_code=503,
-            detail="No model loaded. Train and register a model first.",
+            media_type="application/json",
         )
 
     with LATENCY.time():
