@@ -17,14 +17,15 @@ DriftWatch simulates a complete ML lifecycle where models monitor themselves and
 
 ### Key Features
 
-- **Automated Drift Detection**: Monitors feature and concept drift using Evidently
+- **Web Dashboard**: Browser UI at `localhost:8765` — run pipeline steps, launch demos, inspect the live model, and call the inference API without touching the terminal
+- **Automated Drift Detection**: Monitors feature distribution drift using Evidently
 - **Multi-Agent Control Plane**: Three specialized agents coordinate automated responses
   - **Sentinel**: Observes metrics and classifies incidents
   - **Planner**: Generates execution plans based on policies
   - **Release**: Enforces quality gates and safe deployments
 - **Policy-as-Code**: All decisions constrained by versioned YAML policies
 - **Full Observability**: MLflow tracking, Prometheus metrics, drift reports
-- **Deterministic Demos**: Reproducible drift scenarios for testing
+- **Reproducible Demo Scenarios**: Pre-configured drift scenarios for testing
 
 ---
 
@@ -91,9 +92,12 @@ DriftWatch simulates a complete ML lifecycle where models monitor themselves and
 make up
 ```
 
-Access UIs:
+`make up` builds and starts all containers, then automatically opens the **DriftWatch dashboard** at `http://localhost:8765`. Everything else can be done from there.
+
+Direct service links:
+- **Dashboard**: http://localhost:8765
 - **MLflow**: http://localhost:5000
-- **API**: http://localhost:8000/docs
+- **API docs**: http://localhost:8000/docs
 - **Prometheus**: http://localhost:9090
 - **Grafana**: http://localhost:3000
 
@@ -114,25 +118,41 @@ This will:
 
 ---
 
+## Dashboard
+
+`make up` opens the dashboard automatically. It can also be opened standalone with `make dashboard`.
+
+**What you can do from the dashboard:**
+
+- **Current model card** — always-visible status strip showing the loaded model name, version, and stage. Updates instantly after a reload.
+- **Try the API** — send a prediction request with custom transaction features and see the fraud probability live.
+- **Full demos** — one-click end-to-end runs (`demo-drift-feature`, `demo-black-friday`). Each demo generates data → trains → promotes → monitors → triggers the control plane → reloads the API automatically.
+- **Pipeline steps** — run each stage individually in order:
+
+```
+[1 Gen Reference] → [2 Gen Current] → [3 Train] → [4 Promote]
+[5 Monitor]       → [6 Control]     → [7 Reload]
+```
+
+All commands stream live output in a side panel. The model status card updates after every reload so you can see the version change in real time.
+
+---
+
 ## Demo Scenarios
 
 ### Feature Drift
-Transaction amounts and distances shift significantly.
+Transaction amounts and distances shift significantly — the model learns different scale relationships.
 ```bash
 make demo-drift-feature
 ```
 
-### Concept Drift
-Fraud patterns change (e.g., fraud moves from international to nighttime transactions).
-```bash
-make demo-drift-concept
-```
-
 ### Shock Event (Black Friday)
-Sudden spike in transaction volume and amounts.
+Sudden late-night spike in transaction volume with elevated fraud rates. The retrained model weights night hours and high amounts more heavily.
 ```bash
 make demo-black-friday
 ```
+
+To see predictions change: after either demo completes, try the predict form with `Hour = 22` and `Amount = 1500`.
 
 ---
 
@@ -201,6 +221,7 @@ driftwatch/
 │       │   └── promotion.yaml
 │       └── runner.py
 ├── infra/
+│   ├── dashboard/          # Web dashboard (server.py + embedded HTML)
 │   ├── prometheus/
 │   └── grafana/
 ├── shared/                 # Runtime artifacts (gitignored)
@@ -235,7 +256,7 @@ drift_policy:
 
 release_policy:
   promote_if_quality_gates_pass: true
-  promote_stage: Staging
+  promote_stage: Production
 ```
 
 ---
@@ -244,27 +265,27 @@ release_policy:
 
 ```bash
 # Infrastructure
-make up              # Start core services
+make up              # Start services + open dashboard
 make down            # Stop all services
+make dashboard       # Open dashboard without restarting services
 make logs            # Tail all logs
 make api-logs        # Tail API logs only
 
 # Data Generation
 make gen-base        # Generate reference dataset
-make gen-feature     # Generate feature drift
-make gen-concept     # Generate concept drift
-make gen-blackfriday # Generate shock event
+make gen-feature     # Generate feature drift current dataset
+make gen-blackfriday # Generate Black Friday shock current dataset
 
 # ML Pipeline
-make train           # Train model on reference data
-make promote-prod    # Promote latest to Production
-make monitor         # Run drift detection
-make control         # Execute control plane
+make train           # Train model and register to MLflow
+make promote-prod    # Promote latest model to Production
+make monitor         # Run Evidently drift detection
+make control         # Execute control plane (sentinel → planner → release)
+make reload-api      # Hot-reload Production model in the API
 
 # End-to-End Demos
-make demo-drift-feature
-make demo-drift-concept
-make demo-black-friday
+make demo-drift-feature   # Full pipeline: feature drift scenario
+make demo-black-friday    # Full pipeline: Black Friday shock scenario
 
 # Development (CI/CD)
 make setup-dev       # Install dev dependencies
