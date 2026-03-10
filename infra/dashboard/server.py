@@ -127,24 +127,41 @@ HTML = r"""<!DOCTYPE html>
     .result-stage { font-size: 0.75rem; color: #475569; margin-top: 6px; }
     #predict-error { margin-top: 20px; padding-top: 20px; border-top: 1px solid #2d3348; font-size: 0.82rem; color: #f87171; display: none; }
 
-    /* ── Pipeline steps ── */
-    .pipeline { display: flex; flex-direction: column; gap: 0; }
-    .pipe-step {
-      display: flex; gap: 14px; align-items: flex-start;
+    /* ── Model status card ── */
+    .model-status-card {
+      display: flex; align-items: center; gap: 10px;
+      background: #1e2330; border: 1px solid #2d3348; border-radius: 8px;
+      padding: 10px 14px; margin-bottom: 0; transition: border-color 0.3s, background 0.3s;
+    }
+    .model-status-card.ok   { border-color: #166534; background: #042012; }
+    .model-status-card.warn { border-color: #78350f; background: #1c1200; }
+    .model-dot { width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0; transition: background 0.3s; }
+    .model-dot.ok   { background: #22c55e; box-shadow: 0 0 5px #22c55e88; }
+    .model-dot.warn { background: #f59e0b; }
+    .model-status-text { flex: 1; font-size: 0.82rem; color: #94a3b8; }
+    .model-status-text strong { color: #f1f5f9; }
+    .model-version { display: inline-block; font-size: 0.68rem; font-weight: 600; color: #818cf8; background: #1e1b4b; border: 1px solid #3730a3; border-radius: 4px; padding: 1px 6px; margin-left: 4px; }
+    .model-stage   { display: inline-block; font-size: 0.68rem; font-weight: 600; color: #4ade80; background: #042012; border: 1px solid #166534; border-radius: 4px; padding: 1px 6px; margin-left: 4px; }
+
+    /* ── Pipeline flowchart ── */
+    .pipe-flow { display: flex; flex-direction: column; gap: 8px; }
+    .pipe-row  { display: flex; align-items: center; gap: 6px; }
+    .pipe-ha { color: #475569; font-size: 0.9rem; padding: 0 2px; flex-shrink: 0; line-height: 1; }
+    .pipe-node {
+      width: 128px; min-height: 108px; flex-shrink: 0;
       background: #1e2330; border: 1px solid #2d3348; border-radius: 10px;
-      padding: 16px 20px;
+      padding: 10px; display: flex; flex-direction: column; gap: 5px;
     }
     .pipe-num {
-      width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+      width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
       background: #1e1b4b; border: 1px solid #3730a3;
       display: flex; align-items: center; justify-content: center;
-      font-size: 0.72rem; font-weight: 700; color: #818cf8; margin-top: 1px;
+      font-size: 0.65rem; font-weight: 700; color: #818cf8;
     }
-    .pipe-body { flex: 1; }
-    .pipe-title { font-size: 0.88rem; font-weight: 600; color: #f1f5f9; margin-bottom: 4px; }
-    .pipe-desc  { font-size: 0.75rem; color: #64748b; line-height: 1.5; margin-bottom: 10px; }
-    .pipe-btns  { display: flex; flex-wrap: wrap; gap: 6px; }
-    .pipe-arrow { text-align: center; color: #2d3348; font-size: 1rem; line-height: 1; padding: 4px 0; }
+    .pipe-label { font-size: 0.78rem; font-weight: 600; color: #f1f5f9; line-height: 1.3; flex: 1; }
+    .pipe-sub   { font-size: 0.66rem; color: #475569; line-height: 1.4; margin-top: -2px; }
+    .pipe-btns  { display: flex; flex-direction: column; gap: 3px; margin-top: auto; }
+    .btn-sm { font-size: 0.68rem !important; padding: 3px 7px !important; }
 
     /* ── Demo cards ── */
     .demo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
@@ -234,6 +251,14 @@ HTML = r"""<!DOCTYPE html>
 
   </div>
 
+  <!-- ── Model status ── -->
+  <div class="spacer" style="height:16px"></div>
+  <div id="model-status-card" class="model-status-card">
+    <div id="model-dot" class="model-dot"></div>
+    <div id="model-status-text" class="model-status-text">Checking model…</div>
+    <button class="btn btn-reload" style="font-size:0.72rem;padding:4px 10px" onclick="reloadModel()">Reload</button>
+  </div>
+
   <!-- ── Predict ── -->
   <div class="spacer"></div>
   <p class="section-label">Try the fraud detection API</p>
@@ -306,97 +331,77 @@ HTML = r"""<!DOCTYPE html>
 
   </div>
 
-  <!-- ── Pipeline steps ── -->
+  <!-- ── Pipeline flowchart ── -->
   <div class="spacer"></div>
   <p class="section-label">Pipeline — run steps individually</p>
-  <div class="pipeline">
+  <div class="pipe-flow">
 
-    <div class="pipe-step">
-      <div class="pipe-num">1</div>
-      <div class="pipe-body">
-        <div class="pipe-title">Generate Reference Data</div>
-        <div class="pipe-desc">Creates the baseline dataset that Evidently uses as the reference for drift detection.</div>
+    <!-- Row 1: 1 → 2 → 3 → 4 -->
+    <div class="pipe-row">
+      <div class="pipe-node">
+        <div class="pipe-num">1</div>
+        <div class="pipe-label">Gen Reference</div>
+        <div class="pipe-sub">Baseline for drift detection</div>
         <div class="pipe-btns">
-          <button class="btn btn-run" onclick="runCmd('gen-base', this)">▶ gen-base</button>
+          <button class="btn btn-run btn-sm" onclick="runCmd('gen-base', this)">▶ gen-base</button>
+        </div>
+      </div>
+      <div class="pipe-ha">→</div>
+      <div class="pipe-node">
+        <div class="pipe-num">2</div>
+        <div class="pipe-label">Gen Current</div>
+        <div class="pipe-sub">Pick a drift scenario</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run btn-sm" onclick="runCmd('gen-feature', this)" title="Gradual shift in amounts, distances, risk scores">▶ Feature drift</button>
+          <button class="btn btn-run btn-sm" onclick="runCmd('gen-blackfriday', this)" title="Sudden late-night spike with elevated fraud multiplier">▶ Black Friday</button>
+        </div>
+      </div>
+      <div class="pipe-ha">→</div>
+      <div class="pipe-node">
+        <div class="pipe-num">3</div>
+        <div class="pipe-label">Train Model</div>
+        <div class="pipe-sub">Register to MLflow</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run btn-sm" onclick="runCmd('train', this)">▶ train</button>
+        </div>
+      </div>
+      <div class="pipe-ha">→</div>
+      <div class="pipe-node">
+        <div class="pipe-num">4</div>
+        <div class="pipe-label">Promote</div>
+        <div class="pipe-sub">Set as Production in MLflow</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run btn-sm" onclick="runCmd('promote-prod', this)">▶ promote-prod</button>
         </div>
       </div>
     </div>
 
-    <div class="pipe-arrow">↓</div>
-
-    <div class="pipe-step">
-      <div class="pipe-num">2</div>
-      <div class="pipe-body">
-        <div class="pipe-title">Generate Current Data</div>
-        <div class="pipe-desc">Generates the "current" dataset compared against the reference. Pick a scenario.</div>
+    <!-- Row 2: 5 → 6 → 7 -->
+    <div class="pipe-row">
+      <div class="pipe-node">
+        <div class="pipe-num">5</div>
+        <div class="pipe-label">Monitor</div>
+        <div class="pipe-sub">Evidently drift report</div>
         <div class="pipe-btns">
-          <button class="btn btn-run" onclick="runCmd('gen-feature', this)" title="Gradual shift in transaction amounts, distances and risk scores">▶ Feature drift</button>
-          <button class="btn btn-run" onclick="runCmd('gen-blackfriday', this)" title="Sudden late-night spike with elevated fraud multiplier">▶ Black Friday</button>
+          <button class="btn btn-run btn-sm" onclick="runCmd('monitor', this)">▶ monitor</button>
         </div>
       </div>
-    </div>
-
-    <div class="pipe-arrow">↓</div>
-
-    <div class="pipe-step">
-      <div class="pipe-num">3</div>
-      <div class="pipe-body">
-        <div class="pipe-title">Train Model</div>
-        <div class="pipe-desc">Trains a new model on the reference data and registers it to MLflow.</div>
+      <div class="pipe-ha">→</div>
+      <div class="pipe-node">
+        <div class="pipe-num">6</div>
+        <div class="pipe-label">Control Plane</div>
+        <div class="pipe-sub">Sentinel → Planner → Release</div>
         <div class="pipe-btns">
-          <button class="btn btn-run" onclick="runCmd('train', this)">▶ train</button>
+          <button class="btn btn-run btn-sm" onclick="runCmd('control', this)">▶ control</button>
         </div>
       </div>
-    </div>
-
-    <div class="pipe-arrow">↓</div>
-
-    <div class="pipe-step">
-      <div class="pipe-num">4</div>
-      <div class="pipe-body">
-        <div class="pipe-title">Promote to Production</div>
-        <div class="pipe-desc">Promotes the latest registered model version to the Production stage in MLflow.</div>
+      <div class="pipe-ha">→</div>
+      <div class="pipe-node">
+        <div class="pipe-num">7</div>
+        <div class="pipe-label">Reload API</div>
+        <div class="pipe-sub">Hot-swap Production model</div>
         <div class="pipe-btns">
-          <button class="btn btn-run" onclick="runCmd('promote-prod', this)">▶ promote-prod</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="pipe-arrow">↓</div>
-
-    <div class="pipe-step">
-      <div class="pipe-num">5</div>
-      <div class="pipe-body">
-        <div class="pipe-title">Run Drift Monitoring</div>
-        <div class="pipe-desc">Runs Evidently against reference vs. current data and writes drift reports to shared/reports/.</div>
-        <div class="pipe-btns">
-          <button class="btn btn-run" onclick="runCmd('monitor', this)">▶ monitor</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="pipe-arrow">↓</div>
-
-    <div class="pipe-step">
-      <div class="pipe-num">6</div>
-      <div class="pipe-body">
-        <div class="pipe-title">Run Control Plane</div>
-        <div class="pipe-desc">Sentinel reads the drift reports → Planner decides action → Release retrains and promotes automatically.</div>
-        <div class="pipe-btns">
-          <button class="btn btn-run" onclick="runCmd('control', this)">▶ control</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="pipe-arrow">↓</div>
-
-    <div class="pipe-step">
-      <div class="pipe-num">7</div>
-      <div class="pipe-body">
-        <div class="pipe-title">Reload API Model</div>
-        <div class="pipe-desc">Tells the running API to pick up the current Production model from MLflow without restarting.</div>
-        <div class="pipe-btns">
-          <button class="btn btn-run" id="pipe-reload-btn" onclick="pipeReload(this)">▶ reload-api</button>
+          <button class="btn btn-run btn-sm" id="pipe-reload-btn" onclick="pipeReload(this)">▶ reload-api</button>
         </div>
       </div>
     </div>
@@ -428,6 +433,34 @@ HTML = r"""<!DOCTYPE html>
   }
   updateStatus();
   setInterval(updateStatus, 5000);
+
+  // ── Model status ──────────────────────────────────────────────────────────
+  async function updateModelStatus() {
+    const card = document.getElementById('model-status-card');
+    const dot  = document.getElementById('model-dot');
+    const text = document.getElementById('model-status-text');
+    try {
+      const resp = await fetch('/api/health', { signal: AbortSignal.timeout(4000) });
+      const d = await resp.json();
+      if (d.model_loaded) {
+        card.className = 'model-status-card ok';
+        dot.className  = 'model-dot ok';
+        const ver   = d.version   ? `<span class="model-version">v${d.version}</span>`   : '';
+        const stage = d.stage     ? `<span class="model-stage">${d.stage}</span>`         : '';
+        text.innerHTML = `<strong>${d.model}</strong>${ver}${stage}`;
+      } else {
+        card.className = 'model-status-card warn';
+        dot.className  = 'model-dot warn';
+        text.innerHTML = '<strong>No model loaded</strong> — run a demo or: train → promote → reload';
+      }
+    } catch(e) {
+      card.className = 'model-status-card';
+      dot.className  = 'model-dot';
+      text.innerHTML = 'API unreachable — run <strong>make up</strong> first';
+    }
+  }
+  updateModelStatus();
+  setInterval(updateModelStatus, 8000);
 
   // ── Predict ───────────────────────────────────────────────────────────────
   async function predict() {
@@ -499,6 +532,7 @@ HTML = r"""<!DOCTYPE html>
       if (data.ok) {
         btn.textContent = `✓ ${data.stage}`;
         btn.classList.add('ok');
+        updateModelStatus();
         setTimeout(() => { btn.textContent = '▶ reload-api'; btn.classList.remove('ok'); btn.disabled = false; }, 3000);
       } else {
         btn.textContent = '✗ failed';
@@ -519,10 +553,11 @@ HTML = r"""<!DOCTYPE html>
       const resp = await fetch('/api/reload', {method: 'POST'});
       const data = await resp.json();
       btn.textContent = data.ok ? `Reloaded (${data.stage})` : 'Reload failed';
-      setTimeout(() => { btn.textContent = 'Reload model'; btn.disabled = false; }, 2500);
+      updateModelStatus();
+      setTimeout(() => { btn.textContent = 'Reload'; btn.disabled = false; }, 2500);
     } catch(e) {
       btn.textContent = 'Unreachable';
-      setTimeout(() => { btn.textContent = 'Reload model'; btn.disabled = false; }, 2500);
+      setTimeout(() => { btn.textContent = 'Reload'; btn.disabled = false; }, 2500);
     }
   }
 
@@ -607,6 +642,7 @@ HTML = r"""<!DOCTYPE html>
         if (d.ok) {
           addLine(`Model reloaded — stage: ${d.stage}`, 'success');
           addLine('You can now use the Predict form above.', '');
+          updateModelStatus();
         } else {
           addLine('Reload returned unexpected response', 'err');
         }
@@ -630,6 +666,8 @@ class Handler(BaseHTTPRequestHandler):
             self._html()
         elif path == "/api/status":
             self._status()
+        elif path == "/api/health":
+            self._proxy_get(f"{API}/health")
         else:
             self._respond(404, b"Not found")
 
@@ -670,6 +708,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
+
+    def _proxy_get(self, url: str):
+        try:
+            with urllib.request.urlopen(url, timeout=4) as resp:
+                data = resp.read()
+                self.send_response(resp.status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                self.wfile.write(data)
+        except Exception as e:
+            self._respond(502, json.dumps({"error": str(e), "model_loaded": False}).encode())
 
     def _proxy(self, url: str):
         length = int(self.headers.get("Content-Length", 0))
