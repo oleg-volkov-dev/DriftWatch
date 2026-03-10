@@ -54,7 +54,7 @@ def _load_model() -> None:
 
     stage_uri = f"models:/{MODEL_NAME}/Production"
     try:
-        _model = mlflow.pyfunc.load_model(stage_uri)
+        _model = mlflow.sklearn.load_model(stage_uri)
         _model_stage = "Production"
         logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="Production")
         return
@@ -63,7 +63,7 @@ def _load_model() -> None:
 
     latest_uri = f"models:/{MODEL_NAME}/latest"
     try:
-        _model = mlflow.pyfunc.load_model(latest_uri)
+        _model = mlflow.sklearn.load_model(latest_uri)
         _model_stage = "latest"
         logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="latest")
     except Exception as e:
@@ -83,7 +83,7 @@ app = FastAPI(title="Fraud Inference API", version="0.1.0", lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    return {"ok": True, "model": MODEL_NAME, "stage": _model_stage}
+    return {"ok": True, "model": MODEL_NAME, "stage": _model_stage, "model_loaded": _model is not None}
 
 
 @app.post("/reload")
@@ -121,8 +121,7 @@ def predict(txn: Txn):
     with LATENCY.time():
         try:
             df = pd.DataFrame([txn.model_dump()])
-            score = float(_model.predict(df)[0])
-            proba = max(0.0, min(1.0, score))
+            proba = max(0.0, min(1.0, float(_model.predict_proba(df)[0, 1])))
 
             result = Pred(
                 fraud_probability=proba,

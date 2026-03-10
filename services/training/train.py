@@ -74,7 +74,7 @@ def train_and_log(reference_csv: str) -> TrainResult:
     X = df.drop(columns=[LABEL])
     y = df[LABEL].astype(int)
 
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng()
     idx = rng.permutation(len(df))
     split = int(0.8 * len(df))
     train_idx, test_idx = idx[:split], idx[split:]

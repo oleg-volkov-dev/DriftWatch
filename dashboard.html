@@ -226,6 +226,242 @@
     .bg-orange  { background: #1c0a00; }
     .bg-blue    { background: #0c1a2e; }
     .bg-purple  { background: #1a0533; }
+
+    /* Tabs */
+    .tabs {
+      max-width: 900px;
+      margin: 0 auto 32px;
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid #2d3348;
+      padding-bottom: 0;
+    }
+
+    .tab-btn {
+      padding: 10px 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #64748b;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+      margin-bottom: -1px;
+    }
+
+    .tab-btn:hover { color: #94a3b8; }
+    .tab-btn.active { color: #818cf8; border-bottom-color: #6366f1; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Model status banner */
+    .status-banner {
+      max-width: 900px;
+      margin: 0 auto 28px;
+      border-radius: 12px;
+      padding: 20px 24px;
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      border: 1px solid;
+    }
+
+    .status-banner.warn {
+      background: #1c1200;
+      border-color: #78350f;
+    }
+
+    .status-banner.ok {
+      background: #042012;
+      border-color: #166534;
+    }
+
+    .status-banner.checking {
+      background: #0f1117;
+      border-color: #2d3348;
+    }
+
+    .status-icon {
+      font-size: 1.6rem;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .status-body h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .status-banner.warn  .status-body h3 { color: #fbbf24; }
+    .status-banner.ok    .status-body h3 { color: #4ade80; }
+    .status-banner.checking .status-body h3 { color: #94a3b8; }
+
+    .status-body p {
+      font-size: 0.84rem;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+
+    .status-body code {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.78rem;
+      background: #0f1117;
+      border: 1px solid #2d3348;
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: #a5b4fc;
+    }
+
+    .status-meta {
+      margin-top: 10px;
+      font-size: 0.78rem;
+      color: #475569;
+    }
+
+    /* Try prediction panel */
+    .predict-panel {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #1e2330;
+      border: 1px solid #2d3348;
+      border-radius: 12px;
+      padding: 24px 28px;
+    }
+
+    .predict-panel h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #475569;
+      margin-bottom: 20px;
+    }
+
+    .predict-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #64748b;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .field input, .field select {
+      width: 100%;
+      padding: 7px 10px;
+      background: #0f1117;
+      border: 1px solid #2d3348;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.12s;
+    }
+
+    .field input:focus, .field select:focus { border-color: #6366f1; }
+
+    .predict-btn {
+      padding: 9px 22px;
+      background: #4338ca;
+      color: #e0e7ff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+
+    .predict-btn:hover { background: #4f46e5; }
+    .predict-btn:disabled { background: #1e1b4b; color: #475569; cursor: not-allowed; }
+
+    /* Result display */
+    .predict-result {
+      margin-top: 20px;
+      padding: 16px 20px;
+      background: #0f1117;
+      border: 1px solid #2d3348;
+      border-radius: 10px;
+      display: none;
+    }
+
+    .predict-result.visible { display: block; }
+
+    .result-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .proba-bar-wrap {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .proba-label {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .proba-bar {
+      height: 10px;
+      border-radius: 5px;
+      background: #2d3348;
+      overflow: hidden;
+    }
+
+    .proba-fill {
+      height: 100%;
+      border-radius: 5px;
+      transition: width 0.3s ease;
+    }
+
+    .proba-fill.safe       { background: #16a34a; }
+    .proba-fill.suspicious { background: #d97706; }
+    .proba-fill.fraud      { background: #dc2626; }
+
+    .verdict {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .verdict.safe       { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+    .verdict.suspicious { background: #1c1200; color: #fbbf24; border: 1px solid #92400e; }
+    .verdict.fraud      { background: #1c0a0a; color: #f87171; border: 1px solid #991b1b; }
+
+    .proba-pct {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      flex-shrink: 0;
+    }
+
+    .result-stage {
+      font-size: 0.72rem;
+      color: #475569;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
@@ -238,6 +474,13 @@
       new model versions to production without manual intervention.
     </p>
   </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('overview', this)">Overview</button>
+    <button class="tab-btn" onclick="switchTab('model-status', this)">Model Status</button>
+  </div>
+
+  <div id="tab-overview" class="tab-panel active">
 
   <div class="quickstart">
     <h2>Quick start</h2>
@@ -389,6 +632,178 @@
     </div>
 
   </div>
+
+  </div><!-- end tab-overview -->
+
+  <div id="tab-model-status" class="tab-panel">
+
+    <!-- Status banner – updated by JS -->
+    <div id="status-banner" class="status-banner checking">
+      <div class="status-icon">⏳</div>
+      <div class="status-body">
+        <h3>Checking model status…</h3>
+        <p>Contacting the inference API at <code>localhost:8000</code>.</p>
+      </div>
+    </div>
+
+    <!-- Try a prediction -->
+    <div class="predict-panel">
+      <h2>Try a prediction</h2>
+      <div class="predict-form">
+        <div class="field">
+          <label>Transaction Amount ($)</label>
+          <input id="f-amount" type="number" value="250" min="0" step="0.01">
+        </div>
+        <div class="field">
+          <label>Transaction Hour (0-23)</label>
+          <input id="f-hour" type="number" value="14" min="0" max="23">
+        </div>
+        <div class="field">
+          <label>Customer Age</label>
+          <input id="f-age" type="number" value="34" min="0" max="120">
+        </div>
+        <div class="field">
+          <label>Account Tenure (days)</label>
+          <input id="f-tenure" type="number" value="365" min="0">
+        </div>
+        <div class="field">
+          <label>Merchant Risk Score (0-1)</label>
+          <input id="f-risk" type="number" value="0.3" min="0" max="1" step="0.01">
+        </div>
+        <div class="field">
+          <label>Geo Distance (km)</label>
+          <input id="f-geo" type="number" value="12" min="0" step="0.1">
+        </div>
+        <div class="field">
+          <label>International?</label>
+          <select id="f-intl">
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+        </div>
+      </div>
+      <button id="predict-btn" class="predict-btn" onclick="runPrediction()">Run Prediction</button>
+
+      <div id="predict-result" class="predict-result">
+        <div class="result-row">
+          <div class="proba-bar-wrap">
+            <div class="proba-label">Fraud Probability</div>
+            <div class="proba-bar"><div id="proba-fill" class="proba-fill safe" style="width:0%"></div></div>
+          </div>
+          <div id="proba-pct" class="proba-pct">0%</div>
+          <div id="verdict" class="verdict safe">Safe</div>
+        </div>
+        <div id="result-stage" class="result-stage"></div>
+      </div>
+    </div>
+
+  </div><!-- end tab-model-status -->
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    function switchTab(name, btn) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      btn.classList.add('active');
+      if (name === 'model-status') checkModelStatus();
+    }
+
+    async function checkModelStatus() {
+      const banner = document.getElementById('status-banner');
+      try {
+        const res = await fetch(API + '/health', { signal: AbortSignal.timeout(4000) });
+        const data = await res.json();
+        if (data.model_loaded) {
+          banner.className = 'status-banner ok';
+          banner.innerHTML = `
+            <div class="status-icon">✅</div>
+            <div class="status-body">
+              <h3>Model is ready for predictions</h3>
+              <p>
+                <strong>${data.model}</strong> is loaded and serving in stage
+                <code>${data.stage}</code>. Use the form below to try a prediction.
+              </p>
+              <div class="status-meta">API reachable at <code>${API}</code></div>
+            </div>`;
+          document.getElementById('predict-btn').disabled = false;
+        } else {
+          showNoModel(banner, `Stage reported as <code>${data.stage}</code> — no model is currently loaded.`);
+        }
+      } catch (e) {
+        showNoModel(banner, `Could not reach the API at <code>${API}</code>. Make sure the stack is running (<code>make up</code>).`);
+      }
+    }
+
+    function showNoModel(banner, reason) {
+      banner.className = 'status-banner warn';
+      banner.innerHTML = `
+        <div class="status-icon">⚠️</div>
+        <div class="status-body">
+          <h3>No model served yet</h3>
+          <p>${reason}<br>
+          Run a demo to train and promote a model:<br>
+          <code>make demo-drift-feature</code> &nbsp;·&nbsp;
+          <code>make demo-drift-concept</code> &nbsp;·&nbsp;
+          <code>make demo-black-friday</code>
+          </p>
+        </div>`;
+      document.getElementById('predict-btn').disabled = true;
+    }
+
+    async function runPrediction() {
+      const btn = document.getElementById('predict-btn');
+      btn.disabled = true;
+      btn.textContent = 'Running…';
+      try {
+        const body = {
+          transaction_amount: parseFloat(document.getElementById('f-amount').value),
+          transaction_hour:   parseInt(document.getElementById('f-hour').value),
+          customer_age:       parseInt(document.getElementById('f-age').value),
+          account_tenure_days: parseInt(document.getElementById('f-tenure').value),
+          merchant_risk_score: parseFloat(document.getElementById('f-risk').value),
+          geo_distance_km:    parseFloat(document.getElementById('f-geo').value),
+          is_international:   document.getElementById('f-intl').value === 'true',
+        };
+        const res = await fetch(API + '/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(8000),
+        });
+        const data = await res.json();
+        if (data.error) { alert('API error: ' + data.error); return; }
+
+        const pct = Math.round(data.fraud_probability * 100);
+        let tier, label;
+        if (pct >= 75) {
+          tier = 'fraud'; label = 'Fraud';
+        } else if (pct >= 50) {
+          tier = 'suspicious'; label = 'Suspicious';
+        } else {
+          tier = 'safe'; label = 'Safe';
+        }
+
+        document.getElementById('proba-fill').className = 'proba-fill ' + tier;
+        document.getElementById('proba-fill').style.width = pct + '%';
+        document.getElementById('proba-pct').textContent = pct + '%';
+        document.getElementById('verdict').className = 'verdict ' + tier;
+        document.getElementById('verdict').textContent = label;
+        document.getElementById('result-stage').textContent =
+          `Model: ${data.model_stage ?? '—'}  ·  Threshold: ≥75% fraud, 50-75% suspicious, <50% safe`;
+        document.getElementById('predict-result').classList.add('visible');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Prediction';
+      }
+    }
+
+    // Auto-check on load if model-status tab is opened directly
+    if (window.location.hash === '#model-status') {
+      switchTab('model-status', document.querySelectorAll('.tab-btn')[1]);
+    }
+  </script>
 
 </body>
 </html>

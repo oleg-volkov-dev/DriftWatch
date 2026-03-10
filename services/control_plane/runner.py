@@ -40,8 +40,11 @@ def main() -> None:
 
     if plan_obj.action == "retrain_and_evaluate":
         logger.info("Phase 3: Executing retraining")
-        reference = str(Path(data_dir) / "reference.csv")
-        train_res = train_and_log(reference_csv=reference)
+        current = Path(data_dir) / "current.csv"
+        reference = Path(data_dir) / "reference.csv"
+        train_csv = str(current) if current.exists() else str(reference)
+        logger.info("Training on dataset", path=train_csv, using_current=current.exists())
+        train_res = train_and_log(reference_csv=train_csv)
 
         (events_dir / "training_result.json").write_text(
             json.dumps(train_res.__dict__, indent=2), encoding="utf-8"

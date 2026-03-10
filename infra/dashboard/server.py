@@ -14,12 +14,12 @@ ROOT = Path(__file__).resolve().parent.parent.parent  # infra/dashboard/ -> infr
 API  = "http://localhost:8000"
 
 ALLOWED_COMMANDS = {
-    "demo-drift-feature", "demo-drift-concept", "demo-black-friday",
-    "gen-base", "gen-feature", "gen-concept", "gen-blackfriday",
+    "demo-drift-feature", "demo-black-friday",
+    "gen-base", "gen-feature", "gen-blackfriday",
     "train", "promote-prod", "monitor", "control",
 }
 
-DEMO_COMMANDS = {"demo-drift-feature", "demo-drift-concept", "demo-black-friday"}
+DEMO_COMMANDS = {"demo-drift-feature", "demo-black-friday"}
 
 SERVICE_MATCHES = {
     "mlflow":     "mlflow",
@@ -45,8 +45,9 @@ HTML = r"""<!DOCTYPE html>
       padding: 40px 24px 80px;
     }
 
-    /* ── Layout helpers ── */
-    .wrap  { max-width: 960px; margin: 0 auto; }
+    /* ── Two-column layout ── */
+    #layout { display: flex; gap: 20px; max-width: 1380px; margin: 0 auto; align-items: flex-start; }
+    #main   { flex: 1; min-width: 0; max-width: 960px; }
     .spacer { height: 32px; }
 
     /* ── Header ── */
@@ -126,6 +127,25 @@ HTML = r"""<!DOCTYPE html>
     .result-stage { font-size: 0.75rem; color: #475569; margin-top: 6px; }
     #predict-error { margin-top: 20px; padding-top: 20px; border-top: 1px solid #2d3348; font-size: 0.82rem; color: #f87171; display: none; }
 
+    /* ── Pipeline steps ── */
+    .pipeline { display: flex; flex-direction: column; gap: 0; }
+    .pipe-step {
+      display: flex; gap: 14px; align-items: flex-start;
+      background: #1e2330; border: 1px solid #2d3348; border-radius: 10px;
+      padding: 16px 20px;
+    }
+    .pipe-num {
+      width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+      background: #1e1b4b; border: 1px solid #3730a3;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.72rem; font-weight: 700; color: #818cf8; margin-top: 1px;
+    }
+    .pipe-body { flex: 1; }
+    .pipe-title { font-size: 0.88rem; font-weight: 600; color: #f1f5f9; margin-bottom: 4px; }
+    .pipe-desc  { font-size: 0.75rem; color: #64748b; line-height: 1.5; margin-bottom: 10px; }
+    .pipe-btns  { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pipe-arrow { text-align: center; color: #2d3348; font-size: 1rem; line-height: 1; padding: 4px 0; }
+
     /* ── Demo cards ── */
     .demo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
     .demo-title { font-size: 0.9rem; font-weight: 600; color: #f1f5f9; margin-bottom: 6px; }
@@ -134,9 +154,15 @@ HTML = r"""<!DOCTYPE html>
     .btn-run { color: #818cf8; border-color: #3730a3; background: #1e1b4b; width: fit-content; }
     .btn-run:hover:not(:disabled) { background: #312e81; color: #c7d2fe; }
     .btn-run.running { border-color: #ca8a04; background: #1c1400; color: #fbbf24; }
+    .btn-run.ok { border-color: #166534; background: #042012; color: #4ade80; }
 
-    /* ── Terminal ── */
-    #terminal-wrap { margin-top: 12px; display: none; }
+    /* ── Terminal panel ── */
+    #terminal-panel {
+      display: none; flex-direction: column;
+      width: 400px; flex-shrink: 0;
+      position: sticky; top: 24px;
+      max-height: calc(100vh - 48px);
+    }
     .term-header { display: flex; align-items: center; justify-content: space-between; background: #161b27; border: 1px solid #2d3348; border-bottom: none; border-radius: 8px 8px 0 0; padding: 8px 14px; }
     .term-title  { font-size: 0.73rem; font-weight: 600; color: #64748b; font-family: "SF Mono", monospace; }
     .term-close  { font-size: 0.73rem; color: #475569; background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
@@ -144,7 +170,7 @@ HTML = r"""<!DOCTYPE html>
     #terminal-output {
       background: #0a0d14; border: 1px solid #2d3348; border-radius: 0 0 8px 8px;
       padding: 14px 16px; font-family: "SF Mono", "Fira Code", monospace; font-size: 0.74rem;
-      line-height: 1.6; color: #94a3b8; max-height: 380px; overflow-y: auto;
+      line-height: 1.6; color: #94a3b8; flex: 1; overflow-y: auto;
       white-space: pre-wrap; word-break: break-all;
     }
     #terminal-output .prompt  { color: #6366f1; font-weight: 700; }
@@ -153,7 +179,8 @@ HTML = r"""<!DOCTYPE html>
   </style>
 </head>
 <body>
-<div class="wrap">
+<div id="layout">
+<div id="main">
 
   <!-- ── Header ── -->
   <header>
@@ -260,41 +287,134 @@ HTML = r"""<!DOCTYPE html>
     <div id="predict-error"></div>
   </div>
 
-  <!-- ── Demos ── -->
+  <!-- ── Full demos ── -->
   <div class="spacer"></div>
-  <p class="section-label">Run a demo — generates data, trains model, runs drift monitoring + control plane</p>
+  <p class="section-label">Full demos — one command runs the entire pipeline end-to-end</p>
   <div class="demo-grid">
 
     <div class="card demo-card">
       <div class="demo-title">Feature Drift</div>
-      <p class="demo-desc">Gradual shift in transaction distributions — amounts, distances, and risk scores scale over time.</p>
-      <button class="btn btn-run" onclick="runCmd('demo-drift-feature', this)">▶ Run</button>
-    </div>
-
-    <div class="card demo-card">
-      <div class="demo-title">Concept Drift</div>
-      <p class="demo-desc">Same feature distributions, but the relationship between features and fraud changes underneath.</p>
-      <button class="btn btn-run" onclick="runCmd('demo-drift-concept', this)">▶ Run</button>
+      <p class="demo-desc">Gradual shift in transaction distributions — amounts, distances, and risk scores scale over time. Runs: gen-base → train → promote → gen-feature → monitor → control → reload.</p>
+      <button class="btn btn-run" onclick="runCmd('demo-drift-feature', this)">▶ Run full demo</button>
     </div>
 
     <div class="card demo-card">
       <div class="demo-title">Black Friday Shock</div>
-      <p class="demo-desc">Sudden spike event — late-night transaction surge with an elevated fraud multiplier.</p>
-      <button class="btn btn-run" onclick="runCmd('demo-black-friday', this)">▶ Run</button>
+      <p class="demo-desc">Sudden spike event — late-night transaction surge with an elevated fraud multiplier. Simulates a one-off shock rather than gradual drift.</p>
+      <button class="btn btn-run" onclick="runCmd('demo-black-friday', this)">▶ Run full demo</button>
     </div>
 
   </div>
 
-  <!-- ── Terminal ── -->
-  <div id="terminal-wrap">
-    <div class="term-header">
-      <span class="term-title" id="term-title">output</span>
-      <button class="term-close" onclick="closeTerminal()">✕ close</button>
+  <!-- ── Pipeline steps ── -->
+  <div class="spacer"></div>
+  <p class="section-label">Pipeline — run steps individually</p>
+  <div class="pipeline">
+
+    <div class="pipe-step">
+      <div class="pipe-num">1</div>
+      <div class="pipe-body">
+        <div class="pipe-title">Generate Reference Data</div>
+        <div class="pipe-desc">Creates the baseline dataset that Evidently uses as the reference for drift detection.</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run" onclick="runCmd('gen-base', this)">▶ gen-base</button>
+        </div>
+      </div>
     </div>
-    <div id="terminal-output"></div>
+
+    <div class="pipe-arrow">↓</div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">2</div>
+      <div class="pipe-body">
+        <div class="pipe-title">Generate Current Data</div>
+        <div class="pipe-desc">Generates the "current" dataset compared against the reference. Pick a scenario.</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run" onclick="runCmd('gen-feature', this)" title="Gradual shift in transaction amounts, distances and risk scores">▶ Feature drift</button>
+          <button class="btn btn-run" onclick="runCmd('gen-blackfriday', this)" title="Sudden late-night spike with elevated fraud multiplier">▶ Black Friday</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-arrow">↓</div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">3</div>
+      <div class="pipe-body">
+        <div class="pipe-title">Train Model</div>
+        <div class="pipe-desc">Trains a new model on the reference data and registers it to MLflow.</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run" onclick="runCmd('train', this)">▶ train</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-arrow">↓</div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">4</div>
+      <div class="pipe-body">
+        <div class="pipe-title">Promote to Production</div>
+        <div class="pipe-desc">Promotes the latest registered model version to the Production stage in MLflow.</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run" onclick="runCmd('promote-prod', this)">▶ promote-prod</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-arrow">↓</div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">5</div>
+      <div class="pipe-body">
+        <div class="pipe-title">Run Drift Monitoring</div>
+        <div class="pipe-desc">Runs Evidently against reference vs. current data and writes drift reports to shared/reports/.</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run" onclick="runCmd('monitor', this)">▶ monitor</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-arrow">↓</div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">6</div>
+      <div class="pipe-body">
+        <div class="pipe-title">Run Control Plane</div>
+        <div class="pipe-desc">Sentinel reads the drift reports → Planner decides action → Release retrains and promotes automatically.</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run" onclick="runCmd('control', this)">▶ control</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-arrow">↓</div>
+
+    <div class="pipe-step">
+      <div class="pipe-num">7</div>
+      <div class="pipe-body">
+        <div class="pipe-title">Reload API Model</div>
+        <div class="pipe-desc">Tells the running API to pick up the current Production model from MLflow without restarting.</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run" id="pipe-reload-btn" onclick="pipeReload(this)">▶ reload-api</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-</div><!-- /wrap -->
+</div><!-- /main -->
+
+<!-- ── Terminal panel (right side) ── -->
+<div id="terminal-panel">
+  <div class="term-header">
+    <span class="term-title" id="term-title">output</span>
+    <button class="term-close" onclick="closeTerminal()">✕ close</button>
+  </div>
+  <div id="terminal-output"></div>
+</div>
+
+</div><!-- /layout -->
 
 <script>
   // ── Status polling ────────────────────────────────────────────────────────
@@ -369,6 +489,27 @@ HTML = r"""<!DOCTYPE html>
     el.style.display = 'block';
   }
 
+  // ── Pipeline reload step ──────────────────────────────────────────────────
+  async function pipeReload(btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ reloading…';
+    try {
+      const resp = await fetch('/api/reload', {method: 'POST'});
+      const data = await resp.json();
+      if (data.ok) {
+        btn.textContent = `✓ ${data.stage}`;
+        btn.classList.add('ok');
+        setTimeout(() => { btn.textContent = '▶ reload-api'; btn.classList.remove('ok'); btn.disabled = false; }, 3000);
+      } else {
+        btn.textContent = '✗ failed';
+        setTimeout(() => { btn.textContent = '▶ reload-api'; btn.disabled = false; }, 2500);
+      }
+    } catch(e) {
+      btn.textContent = '✗ unreachable';
+      setTimeout(() => { btn.textContent = '▶ reload-api'; btn.disabled = false; }, 2500);
+    }
+  }
+
   // ── Reload model ──────────────────────────────────────────────────────────
   async function reloadModel() {
     const btn = document.querySelector('.btn-reload');
@@ -386,7 +527,7 @@ HTML = r"""<!DOCTYPE html>
   }
 
   // ── Demo runner ───────────────────────────────────────────────────────────
-  const DEMO_CMDS = new Set(['demo-drift-feature', 'demo-drift-concept', 'demo-black-friday']);
+  const DEMO_CMDS = new Set(['demo-drift-feature', 'demo-black-friday']);
   let activeBtn = null;
 
   function addLine(text, cls) {
@@ -399,21 +540,23 @@ HTML = r"""<!DOCTYPE html>
   }
 
   function closeTerminal() {
-    document.getElementById('terminal-wrap').style.display = 'none';
+    const panel = document.getElementById('terminal-panel');
+    panel.style.display = 'none';
     document.getElementById('terminal-output').innerHTML = '';
   }
 
   async function runCmd(cmd, btn) {
-    const wrap  = document.getElementById('terminal-wrap');
+    const panel = document.getElementById('terminal-panel');
     const title = document.getElementById('term-title');
 
     document.getElementById('terminal-output').innerHTML = '';
-    wrap.style.display = 'block';
+    panel.style.display = 'flex';
     title.textContent  = '$ make ' + cmd;
 
     document.querySelectorAll('.btn-run').forEach(b => b.disabled = true);
-    if (activeBtn) { activeBtn.textContent = '▶ Run'; activeBtn.classList.remove('running'); }
+    if (activeBtn) { activeBtn.textContent = activeBtn.dataset.label || '▶ Run'; activeBtn.classList.remove('running'); }
     activeBtn = btn;
+    btn.dataset.label = btn.textContent;
     btn.textContent = '⏳ running…';
     btn.classList.add('running');
 
@@ -449,7 +592,7 @@ HTML = r"""<!DOCTYPE html>
       addLine('Error: ' + e.message, 'err');
     } finally {
       document.querySelectorAll('.btn-run').forEach(b => b.disabled = false);
-      btn.textContent = '▶ Run';
+      btn.textContent = btn.dataset.label || '▶ Run';
       btn.classList.remove('running');
       activeBtn = null;
     }
