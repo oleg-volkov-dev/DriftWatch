@@ -137,9 +137,9 @@ install-hooks:
 	@echo "Pre-commit hooks installed. They will run automatically on git commit."
 
 format:
-	@echo "Sorting imports with isort..."
-	isort .
-	@echo "Import sorting complete!"
+	@echo "Auto-fixing imports and style with ruff..."
+	ruff check --fix .
+	@echo "Format complete!"
 
 lint:
 	@echo "Running ruff linter..."

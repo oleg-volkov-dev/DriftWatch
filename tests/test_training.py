@@ -7,8 +7,14 @@ import pandas as pd
 import pytest
 from sklearn.pipeline import Pipeline
 
-from services.training.train import (FEATURES_BOOL, FEATURES_NUM, LABEL, TrainResult,
-                                     build_pipeline, load_csv)
+from services.training.train import (
+    FEATURES_BOOL,
+    FEATURES_NUM,
+    LABEL,
+    TrainResult,
+    build_pipeline,
+    load_csv,
+)
 
 SAMPLE_DATA = {
     "transaction_amount": [
