@@ -24,13 +24,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install black isort ruff
-
-    - name: Check code formatting with Black
-      run: black --check --diff .
-
-    - name: Check import sorting with isort
-      run: isort --check-only --diff .
+        pip install ruff
 
     - name: Lint with Ruff
       run: ruff check .

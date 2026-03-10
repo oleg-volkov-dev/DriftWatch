@@ -8,11 +8,11 @@ PROJECT_NAME := driftwatch
 
 .PHONY: help up down build logs api-logs \
         gen-base gen-feature gen-concept gen-blackfriday \
-        train promote-prod monitor control \
+        train promote-prod monitor control reload-api \
         demo-drift-feature demo-drift-concept demo-black-friday \
         clean-shared \
         format lint test check ci-local \
-        setup-dev install-hooks
+        setup-dev install-hooks dashboard
 
 help:
 	@echo "Targets:"
@@ -39,6 +39,7 @@ help:
 	@echo "  clean-shared       Remove shared artifacts volume"
 	@echo ""
 	@echo "Development & CI/CD:"
+	@echo "  dashboard          Open the service dashboard in browser"
 	@echo "  setup-dev          Install development dependencies"
 	@echo "  install-hooks      Install pre-commit hooks"
 	@echo "  format             Sort imports with isort"
@@ -47,11 +48,20 @@ help:
 	@echo "  check              Run all quality checks (format + lint + test)"
 	@echo "  ci-local           Simulate CI pipeline locally"
 
+dashboard:
+	@-[ -f .dashboard.pid ] && kill $$(cat .dashboard.pid) 2>/dev/null; rm -f .dashboard.pid
+	@python3 infra/dashboard/server.py & echo $$! > .dashboard.pid
+	@sleep 0.4 && open http://localhost:8765
+
 up:
 	docker compose up -d --build mlflow prometheus grafana api
+	@-[ -f .dashboard.pid ] && kill $$(cat .dashboard.pid) 2>/dev/null; rm -f .dashboard.pid
+	@python3 infra/dashboard/server.py & echo $$! > .dashboard.pid
+	@sleep 0.4 && open http://localhost:8765
 
 down:
 	docker compose down -v
+	@-[ -f .dashboard.pid ] && kill $$(cat .dashboard.pid) 2>/dev/null; rm -f .dashboard.pid
 
 build:
 	docker compose build --no-cache api training monitoring control_plane
@@ -99,11 +109,16 @@ control:
 	  python /app/services/control_plane/runner.py
 
 # --- Demo flows ---
-demo-drift-feature: gen-base train promote-prod gen-feature monitor control
+demo-drift-feature: gen-base train promote-prod gen-feature monitor control reload-api
 
-demo-drift-concept: gen-base train promote-prod gen-concept monitor control
+demo-drift-concept: gen-base train promote-prod gen-concept monitor control reload-api
 
-demo-black-friday: gen-base train promote-prod gen-blackfriday monitor control
+demo-black-friday: gen-base train promote-prod gen-blackfriday monitor control reload-api
+
+reload-api:
+	@echo "Reloading model in API container..."
+	@curl -sf -X POST http://localhost:8000/reload | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\"  Model reloaded: {d['model']} (stage: {d['stage']})\")" \
+	  || echo "  Warning: could not reload API model (is the API running?)"
 
 # --- Utilities ---
 clean-shared:
@@ -122,9 +137,9 @@ install-hooks:
 	@echo "Pre-commit hooks installed. They will run automatically on git commit."
 
 format:
-	@echo "Sorting imports with isort..."
-	isort .
-	@echo "Import sorting complete!"
+	@echo "Auto-fixing imports and style with ruff..."
+	ruff check --fix .
+	@echo "Format complete!"
 
 lint:
 	@echo "Running ruff linter..."

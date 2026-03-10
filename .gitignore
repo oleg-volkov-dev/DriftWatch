@@ -37,6 +37,9 @@ Thumbs.db
 *.log
 docker-compose.override.yml
 
+# Dashboard server
+.dashboard.pid
+
 # Env
 .env
 

@@ -7,6 +7,7 @@ from typing import Optional
 import mlflow
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from mlflow.tracking import MlflowClient
 from prometheus_client import Counter, Histogram, generate_latest
 from pydantic import BaseModel, Field
 from starlette.responses import Response
@@ -42,34 +43,41 @@ class Pred(BaseModel):
 
 _model = None
 _model_stage: Optional[str] = None
+_model_version: Optional[str] = None
 
 
 def _load_model() -> None:
-    global _model, _model_stage
+    global _model, _model_stage, _model_version
 
     logger.info(
         "Loading model from MLflow", model_name=MODEL_NAME, tracking_uri=MLFLOW_TRACKING_URI
     )
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    client = MlflowClient(MLFLOW_TRACKING_URI)
 
     stage_uri = f"models:/{MODEL_NAME}/Production"
     try:
-        _model = mlflow.pyfunc.load_model(stage_uri)
+        _model = mlflow.sklearn.load_model(stage_uri)
         _model_stage = "Production"
-        logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="Production")
+        versions = client.get_latest_versions(MODEL_NAME, stages=["Production"])
+        _model_version = versions[0].version if versions else None
+        logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="Production", version=_model_version)
         return
-    except Exception:
-        logger.debug("Production model not found, trying latest")
+    except Exception as e:
+        logger.warning("Production model failed to load, trying latest", error=str(e))
 
     latest_uri = f"models:/{MODEL_NAME}/latest"
     try:
-        _model = mlflow.pyfunc.load_model(latest_uri)
+        _model = mlflow.sklearn.load_model(latest_uri)
         _model_stage = "latest"
-        logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="latest")
-    except Exception:
+        versions = client.get_latest_versions(MODEL_NAME)
+        _model_version = versions[0].version if versions else None
+        logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="latest", version=_model_version)
+    except Exception as e:
         _model = None
         _model_stage = "none"
-        logger.warning("No model found in MLflow", model_name=MODEL_NAME)
+        _model_version = None
+        logger.warning("No model found in MLflow", model_name=MODEL_NAME, error=str(e))
 
 
 @asynccontextmanager
@@ -83,7 +91,7 @@ app = FastAPI(title="Fraud Inference API", version="0.1.0", lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    return {"ok": True, "model": MODEL_NAME, "stage": _model_stage}
+    return {"ok": True, "model": MODEL_NAME, "stage": _model_stage, "version": _model_version, "model_loaded": _model is not None}
 
 
 @app.post("/reload")
@@ -95,6 +103,7 @@ def reload():
             "ok": True,
             "model": MODEL_NAME,
             "stage": _model_stage,
+            "version": _model_version,
             "message": f"Model reloaded successfully (stage: {_model_stage})",
         }
     except Exception as e:
@@ -115,14 +124,13 @@ def predict(txn: Txn):
         return Response(
             content='{"error":"No model loaded. Train and register a model first."}',
             status_code=503,
-            detail="No model loaded. Train and register a model first.",
+            media_type="application/json",
         )
 
     with LATENCY.time():
         try:
             df = pd.DataFrame([txn.model_dump()])
-            score = float(_model.predict(df)[0])
-            proba = max(0.0, min(1.0, score))
+            proba = max(0.0, min(1.0, float(_model.predict_proba(df)[0, 1])))
 
             result = Pred(
                 fraud_probability=proba,

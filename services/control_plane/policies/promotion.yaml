@@ -14,7 +14,7 @@ drift_policy:
 
 release_policy:
   promote_if_quality_gates_pass: true
-  promote_stage: Staging
+  promote_stage: Production
   canary_enabled: true
   canary_max_error_rate: 0.02
 
