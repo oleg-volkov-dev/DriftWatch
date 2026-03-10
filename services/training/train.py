@@ -5,12 +5,12 @@ import os
 from dataclasses import dataclass
 
 import mlflow
-import numpy as np
 import pandas as pd
 from mlflow.tracking import MlflowClient
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
@@ -74,13 +74,9 @@ def train_and_log(reference_csv: str) -> TrainResult:
     X = df.drop(columns=[LABEL])
     y = df[LABEL].astype(int)
 
-    rng = np.random.default_rng()
-    idx = rng.permutation(len(df))
-    split = int(0.8 * len(df))
-    train_idx, test_idx = idx[:split], idx[split:]
-
-    X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
-    X_test, y_test = X.iloc[test_idx], y.iloc[test_idx]
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, stratify=y
+    )
 
     logger.info("Dataset split", train_size=len(X_train), test_size=len(X_test))
 
