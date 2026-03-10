@@ -37,7 +37,7 @@ def client_no_model():
 def client_with_model():
     """TestClient with a mocked model that returns a fixed probability."""
     mock_model = MagicMock()
-    mock_model.predict.return_value = np.array([0.8])
+    mock_model.predict_proba.return_value = np.array([[0.2, 0.8]])
 
     import services.api.main as api_module
 
@@ -116,7 +116,7 @@ class TestPredictEndpointWithModel:
 
     def test_predict_low_score_not_fraud(self) -> None:
         mock_model = MagicMock()
-        mock_model.predict.return_value = np.array([0.2])
+        mock_model.predict_proba.return_value = np.array([[0.8, 0.2]])
 
         import services.api.main as api_module
 
