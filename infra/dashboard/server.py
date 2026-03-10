@@ -698,7 +698,7 @@ class Handler(BaseHTTPRequestHandler):
                 ["docker", "ps", "--format", "{{.Names}}"],
                 timeout=5, text=True,
             )
-            running = [l for l in out.strip().split("\n") if l]
+            running = [line for line in out.strip().split("\n") if line]
             status = {svc: any(m in c for c in running) for svc, m in SERVICE_MATCHES.items()}
         except Exception:
             status = {svc: False for svc in SERVICE_MATCHES}
