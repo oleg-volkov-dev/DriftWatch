@@ -55,24 +55,30 @@ def _load_model() -> None:
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     client = MlflowClient(MLFLOW_TRACKING_URI)
 
-    stage_uri = f"models:/{MODEL_NAME}/Production"
     try:
-        _model = mlflow.sklearn.load_model(stage_uri)
-        _model_stage = "Production"
         versions = client.get_latest_versions(MODEL_NAME, stages=["Production"])
-        _model_version = versions[0].version if versions else None
-        logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="Production", version=_model_version)
-        return
+        if versions:
+            _model_version = versions[0].version
+            version_uri = f"models:/{MODEL_NAME}/{_model_version}"
+            _model = mlflow.sklearn.load_model(version_uri)
+            _model_stage = "Production"
+            logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="Production", version=_model_version)
+            return
+        logger.warning("No Production model found, trying latest", model_name=MODEL_NAME)
     except Exception as e:
         logger.warning("Production model failed to load, trying latest", error=str(e))
 
-    latest_uri = f"models:/{MODEL_NAME}/latest"
     try:
-        _model = mlflow.sklearn.load_model(latest_uri)
-        _model_stage = "latest"
-        versions = client.get_latest_versions(MODEL_NAME)
-        _model_version = versions[0].version if versions else None
-        logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="latest", version=_model_version)
+        all_versions = client.search_model_versions(f"name='{MODEL_NAME}'")
+        if all_versions:
+            latest = max(all_versions, key=lambda v: int(v.version))
+            _model_version = latest.version
+            version_uri = f"models:/{MODEL_NAME}/{_model_version}"
+            _model = mlflow.sklearn.load_model(version_uri)
+            _model_stage = latest.current_stage
+            logger.info("Model loaded successfully", model_name=MODEL_NAME, stage=_model_stage, version=_model_version)
+        else:
+            raise RuntimeError("No model versions found")
     except Exception as e:
         _model = None
         _model_stage = "none"

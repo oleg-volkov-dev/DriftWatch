@@ -103,7 +103,7 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
         name=model_name,
         version=latest.version,
         stage=promote_stage,
-        archive_existing_versions=False,
+        archive_existing_versions=True,
     )
 
     logger.info(
