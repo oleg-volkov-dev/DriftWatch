@@ -7,6 +7,8 @@ drift:
   spike_hours: [20, 21, 22, 23]
   amount_scale: 2.2
   fraud_spike_multiplier: 1.35
+  merchant_risk_shift: 0.12
+  international_rate: 0.28
 
 fraud_logic:
   international_weight: 1.0

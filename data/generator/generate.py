@@ -100,11 +100,21 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
         transaction_amount = transaction_amount * np.where(is_spike, amount_scale, 1.0)
         transaction_amount = np.clip(transaction_amount, 1, 15000)
 
+        risk_shift = float(drift.get("merchant_risk_shift", 0.0))
+        if risk_shift:
+            merchant_risk_score = np.clip(merchant_risk_score + risk_shift, 0, 1)
+
+        intl_rate = drift.get("international_rate")
+        if intl_rate is not None:
+            is_international = rng.random(size=n) < float(intl_rate)
+
         logger.info(
             "Applied shock event",
             shock_name="black_friday",
             spike_hours=sorted(spike_hours),
             amount_scale=amount_scale,
+            merchant_risk_shift=risk_shift,
+            international_rate=intl_rate,
             affected_transactions=int(is_spike.sum()),
         )
 
