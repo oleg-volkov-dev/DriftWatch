@@ -29,14 +29,24 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
     mlflow.set_tracking_uri(tracking_uri)
     client = MlflowClient(tracking_uri=tracking_uri)
 
-    exp = client.get_experiment_by_name(exp_name)
+    try:
+        exp = client.get_experiment_by_name(exp_name)
+    except Exception as e:
+        logger.error("MLflow unreachable", tracking_uri=tracking_uri, error=str(e))
+        return ReleaseResult(False, None, {"reason": "mlflow_unreachable", "error": str(e)})
+
     if not exp:
         logger.error("Experiment not found", experiment_name=exp_name)
         return ReleaseResult(False, None, {"reason": "experiment_not_found"})
 
-    runs = client.search_runs(
-        [exp.experiment_id], order_by=["attributes.start_time DESC"], max_results=1
-    )
+    try:
+        runs = client.search_runs(
+            [exp.experiment_id], order_by=["attributes.start_time DESC"], max_results=1
+        )
+    except Exception as e:
+        logger.error("Failed to query MLflow runs", error=str(e))
+        return ReleaseResult(False, None, {"reason": "mlflow_query_failed", "error": str(e)})
+
     if not runs:
         logger.error("No training runs found", experiment_id=exp.experiment_id)
         return ReleaseResult(False, None, {"reason": "no_runs"})
@@ -99,12 +109,22 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
         target_stage=promote_stage,
     )
 
-    client.transition_model_version_stage(
-        name=model_name,
-        version=latest.version,
-        stage=promote_stage,
-        archive_existing_versions=True,
-    )
+    try:
+        client.transition_model_version_stage(
+            name=model_name,
+            version=latest.version,
+            stage=promote_stage,
+            archive_existing_versions=True,
+        )
+    except Exception as e:
+        logger.error(
+            "Model stage transition failed",
+            model_name=model_name,
+            version=latest.version,
+            target_stage=promote_stage,
+            error=str(e),
+        )
+        return ReleaseResult(False, None, {"reason": "promotion_failed", "error": str(e)})
 
     logger.info(
         "Model promoted successfully",

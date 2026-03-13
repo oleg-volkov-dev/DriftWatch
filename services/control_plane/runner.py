@@ -42,16 +42,40 @@ def main() -> None:
         logger.info("Phase 3: Executing retraining")
         current = Path(data_dir) / "current.csv"
         reference = Path(data_dir) / "reference.csv"
+
+        if not reference.exists() and not current.exists():
+            logger.error("No training data found", data_dir=data_dir)
+            (events_dir / "training_result.json").write_text(
+                json.dumps({"error": f"No training data found in {data_dir}"}), encoding="utf-8"
+            )
+            return
+
         train_csv = str(current) if current.exists() else str(reference)
         logger.info("Training on dataset", path=train_csv, using_current=current.exists())
-        train_res = train_and_log(reference_csv=train_csv)
+
+        try:
+            train_res = train_and_log(reference_csv=train_csv)
+        except Exception as e:
+            logger.error("Training phase failed", error=str(e))
+            (events_dir / "training_result.json").write_text(
+                json.dumps({"error": str(e)}, indent=2), encoding="utf-8"
+            )
+            return
 
         (events_dir / "training_result.json").write_text(
             json.dumps(train_res.__dict__, indent=2), encoding="utf-8"
         )
 
         logger.info("Phase 4: Release evaluation")
-        release_res = maybe_promote_latest_if_gates_pass(plan_obj.policy)
+        try:
+            release_res = maybe_promote_latest_if_gates_pass(plan_obj.policy)
+        except Exception as e:
+            logger.error("Release evaluation failed", error=str(e))
+            (events_dir / "release_result.json").write_text(
+                json.dumps({"error": str(e)}, indent=2), encoding="utf-8"
+            )
+            return
+
         (events_dir / "release_result.json").write_text(
             json.dumps(release_res.__dict__, indent=2), encoding="utf-8"
         )

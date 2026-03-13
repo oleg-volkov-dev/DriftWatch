@@ -41,7 +41,13 @@ class TrainResult:
 
 def load_csv(path: str) -> pd.DataFrame:
     logger.info("Loading training data", path=path)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Training data not found: {path}")
     df = pd.read_csv(path)
+    required = set(FEATURES_NUM + FEATURES_BOOL + [LABEL])
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Training CSV missing required columns: {missing}")
     df["is_international"] = df["is_international"].astype(bool)
     df["is_fraud"] = df["is_fraud"].astype(bool)
     logger.info("Data loaded", rows=len(df), fraud_rate=f"{df['is_fraud'].mean():.1%}")
@@ -68,7 +74,10 @@ def train_and_log(reference_csv: str) -> TrainResult:
     logger.info("Starting training pipeline", experiment=exp_name, model_name=model_name)
 
     mlflow.set_tracking_uri(tracking_uri)
-    mlflow.set_experiment(exp_name)
+    try:
+        mlflow.set_experiment(exp_name)
+    except Exception as e:
+        raise RuntimeError(f"Cannot connect to MLflow at {tracking_uri}: {e}") from e
 
     df = load_csv(reference_csv)
     X = df.drop(columns=[LABEL])
@@ -118,7 +127,10 @@ def promote_latest_to_production() -> None:
     logger.info("Promoting latest model to Production", model_name=model_name)
 
     client = MlflowClient(tracking_uri=tracking_uri)
-    versions = client.search_model_versions(f"name='{model_name}'")
+    try:
+        versions = client.search_model_versions(f"name='{model_name}'")
+    except Exception as e:
+        raise RuntimeError(f"Cannot connect to MLflow at {tracking_uri}: {e}") from e
     if not versions:
         logger.error("No model versions found", model_name=model_name)
         raise RuntimeError(f"No versions found for model '{model_name}'")
@@ -131,12 +143,17 @@ def promote_latest_to_production() -> None:
         archive_existing=True,
     )
 
-    client.transition_model_version_stage(
-        name=model_name,
-        version=latest.version,
-        stage="Production",
-        archive_existing_versions=True,
-    )
+    try:
+        client.transition_model_version_stage(
+            name=model_name,
+            version=latest.version,
+            stage="Production",
+            archive_existing_versions=True,
+        )
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to promote model '{model_name}' v{latest.version} to Production: {e}"
+        ) from e
 
     logger.info(
         "Model promoted successfully",

@@ -53,10 +53,22 @@ def main() -> None:
 
     logger.info("Starting drift detection", reference=args.reference, current=args.current)
 
+    if not Path(args.reference).exists():
+        logger.error("Reference dataset not found", path=args.reference)
+        raise FileNotFoundError(f"Reference dataset not found: {args.reference}")
+    if not Path(args.current).exists():
+        logger.error("Current dataset not found", path=args.current)
+        raise FileNotFoundError(f"Current dataset not found: {args.current}")
+
     ref = pd.read_csv(args.reference)
     cur = pd.read_csv(args.current)
 
     logger.info("Datasets loaded", reference_rows=len(ref), current_rows=len(cur))
+
+    if len(ref) == 0 or len(cur) == 0:
+        raise ValueError(
+            f"Datasets must not be empty (reference={len(ref)} rows, current={len(cur)} rows)"
+        )
 
     logger.info("Running Evidently drift analysis")
     report = Report(metrics=[DataDriftPreset()])

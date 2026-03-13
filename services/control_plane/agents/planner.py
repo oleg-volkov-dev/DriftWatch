@@ -21,7 +21,13 @@ class ExecutionPlan:
 
 def load_policy(policy_path: str) -> Dict[str, Any]:
     logger.info("Loading policy configuration", policy_path=policy_path)
-    return yaml.safe_load(Path(policy_path).read_text(encoding="utf-8"))
+    p = Path(policy_path)
+    if not p.exists():
+        raise FileNotFoundError(f"Policy file not found: {policy_path}")
+    try:
+        return yaml.safe_load(p.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise ValueError(f"Invalid policy YAML at {policy_path}: {e}") from e
 
 
 def plan(report: SentinelReport, policy_path: str) -> ExecutionPlan:
