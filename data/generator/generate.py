@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import yaml
 
-# Getting the custom logger
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from services.common.logging import configure_logging, get_logger
 
@@ -72,8 +71,8 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
     is_international = rng.random(size=n) < 0.12                                              # 12% of being an international transaction
     transaction_amount = np.clip(rng.lognormal(mean=4.2, sigma=0.6, size=n), 1, 5000)         # Skew to the right, most transactions are tens of dollars
 
-    # Feature distribution changes 
-    # Scaling up/down certain colums, trying to simulate how real data slowly changes over time
+    # Feature distribution changes
+    # Scaling up/down certain columns, trying to simulate how real data slowly changes over time
     if drift_type == "feature":
         amount_scale = float(drift.get("amount_scale", 1.0))
         distance_scale = float(drift.get("distance_scale", 1.0))
@@ -90,9 +89,7 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
             merchant_risk_shift=risk_shift,
         )
 
-    # Specific time-window spike
-    # Trying to simulate sudden event (Black Friday) that distorts data 
-    # TODO: add more events in the future, currently only Black Friday is supported
+    # Specific time-window spike — simulates a sudden shock event (e.g. Black Friday)
     if drift_type == "shock" and drift.get("shock_name") == "black_friday":
         spike_hours = set(drift.get("spike_hours", [20, 21, 22, 23]))
         is_spike = np.array([h in spike_hours for h in transaction_hour])
@@ -133,11 +130,7 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
         + logic.distance_weight * (geo_distance_km / (geo_distance_km.max() + 1e-9)) # adding 1e-9 to prevent division by 0
     )
 
-    # This a placeholder for the future developments, does nothing for now
-    if drift_type == "concept":
-        _ = drift.get("concept_variant", "default")
-
-    # Gaussian noise, so transctions with identical features won't always get the same label
+    # Gaussian noise, so transactions with identical features won't always get the same label
     score = score + rng.normal(0, logic.noise, size=n) 
 
     prob = _sigmoid(score - 2.0) # Note: transaction with 0 risk signals has ~12% fraud probability by default 

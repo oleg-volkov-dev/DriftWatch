@@ -15,9 +15,3 @@ drift_policy:
 release_policy:
   promote_if_quality_gates_pass: true
   promote_stage: Production
-  canary_enabled: true
-  canary_max_error_rate: 0.02
-
-rollback_policy:
-  enabled: true
-  rollback_on: [slo_breach, quality_regression]

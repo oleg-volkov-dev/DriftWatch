@@ -9,9 +9,6 @@ description = "Autonomous MLOps platform for fraud detection with policy-driven 
 requires-python = ">=3.11"
 dependencies = []
 
-[tool.isort]
-line_length = 100
-
 [tool.ruff]
 line-length = 100
 target-version = "py311"

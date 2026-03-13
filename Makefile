@@ -7,9 +7,9 @@ export
 PROJECT_NAME := driftwatch
 
 .PHONY: help up down build logs api-logs \
-        gen-base gen-feature gen-concept gen-blackfriday \
+        gen-base gen-feature gen-blackfriday \
         train promote-prod monitor control reload-api \
-        demo-drift-feature demo-drift-concept demo-black-friday \
+        demo-drift-feature demo-black-friday \
         clean-shared \
         format lint test check ci-local \
         setup-dev install-hooks dashboard
@@ -24,7 +24,6 @@ help:
 	@echo ""
 	@echo "  gen-base           Generate reference dataset -> shared/data/reference.csv"
 	@echo "  gen-feature        Generate current dataset (feature drift) -> shared/data/current.csv"
-	@echo "  gen-concept        Generate current dataset (concept drift) -> shared/data/current.csv"
 	@echo "  gen-blackfriday    Generate current dataset (shock) -> shared/data/current.csv"
 	@echo ""
 	@echo "  train              Train + register model to MLflow"
@@ -33,7 +32,6 @@ help:
 	@echo "  control            Run control plane (Sentinel -> Planner -> Release)"
 	@echo ""
 	@echo "  demo-drift-feature End-to-end demo: feature drift"
-	@echo "  demo-drift-concept End-to-end demo: concept drift"
 	@echo "  demo-black-friday  End-to-end demo: shock event"
 	@echo ""
 	@echo "  clean-shared       Remove shared artifacts volume"
@@ -42,7 +40,7 @@ help:
 	@echo "  dashboard          Open the service dashboard in browser"
 	@echo "  setup-dev          Install development dependencies"
 	@echo "  install-hooks      Install pre-commit hooks"
-	@echo "  format             Sort imports with isort"
+	@echo "  format             Auto-fix imports and style with ruff"
 	@echo "  lint               Run linting checks (ruff, mypy)"
 	@echo "  test               Run tests with coverage"
 	@echo "  check              Run all quality checks (format + lint + test)"
@@ -81,10 +79,6 @@ gen-feature:
 	docker compose --profile jobs run --rm training \
 	  python -m data.generator.generate --config /app/data/generator/config/drift_feature.yaml --out /app/shared/data/current.csv
 
-gen-concept:
-	docker compose --profile jobs run --rm training \
-	  python -m data.generator.generate --config /app/data/generator/config/drift_concept.yaml --out /app/shared/data/current.csv
-
 gen-blackfriday:
 	docker compose --profile jobs run --rm training \
 	  python -m data.generator.generate --config /app/data/generator/config/shock_black_friday.yaml --out /app/shared/data/current.csv
@@ -110,8 +104,6 @@ control:
 
 # --- Demo flows ---
 demo-drift-feature: gen-base train promote-prod gen-feature monitor control reload-api
-
-demo-drift-concept: gen-base train promote-prod gen-concept monitor control reload-api
 
 demo-black-friday: gen-base train promote-prod gen-blackfriday monitor control reload-api
 
@@ -160,7 +152,7 @@ ci-local:
 	@echo "Simulating CI pipeline locally..."
 	@echo ""
 	@echo "=== Checking import sorting ==="
-	isort --check-only --diff .
+	ruff check --select I .
 	@echo ""
 	@echo "=== Running linter ==="
 	ruff check .

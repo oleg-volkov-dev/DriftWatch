@@ -160,7 +160,7 @@ To see predictions change: after either demo completes, try the predict form wit
 ### 1. Synthetic Data Generation
 Deterministic fraud dataset with configurable drift:
 - **Features**: transaction_amount, customer_age, merchant_risk, geo_distance, etc.
-- **Drift Types**: Feature distribution shifts, concept changes, shock events
+- **Drift Types**: Feature distribution shifts, shock events
 - **Config-driven**: YAML files control drift parameters
 
 ### 2. Drift Detection
@@ -304,13 +304,13 @@ This project uses automated quality checks and testing:
 
 **Setup (one-time):**
 ```bash
-make setup-dev      # Install pytest, black, ruff, mypy, etc.
+make setup-dev      # Install pytest, ruff, mypy, etc.
 make install-hooks  # Install git pre-commit hooks
 ```
 
 **Before committing:**
 ```bash
-make format  # Auto-format code with Black & isort
+make format  # Auto-fix imports and style with ruff
 make lint    # Check with Ruff & mypy
 make test    # Run tests with coverage
 ```
