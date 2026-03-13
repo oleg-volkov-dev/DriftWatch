@@ -119,6 +119,8 @@ This will:
 
 ## Dashboard
 
+![DriftWatch Dashboard](docs/dashboard.png)
+
 `make up` opens the dashboard automatically. It can also be opened standalone with `make dashboard`.
 
 **What you can do from the dashboard:**
