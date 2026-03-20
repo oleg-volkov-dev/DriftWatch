@@ -33,7 +33,7 @@ ALL_FEATURES = [
 
 class TestComputeDriftSeverityNoMetrics:
     def test_empty_report_returns_none_severity(self) -> None:
-        result = compute_drift_severity({})
+        result, _ = compute_drift_severity({})
 
         assert result["severity"] == "none"
         assert result["drift_ratio"] == 0.0
@@ -43,7 +43,7 @@ class TestComputeDriftSeverityNoMetrics:
     def test_no_data_drift_table_metric(self) -> None:
         report = {"metrics": [{"metric": "SomeOtherMetric", "result": {}}]}
 
-        result = compute_drift_severity(report)
+        result, _ = compute_drift_severity(report)
 
         assert result["severity"] == "none"
         assert result["drift_ratio"] == 0.0
@@ -53,21 +53,23 @@ class TestComputeDriftSeverityThresholds:
     def test_no_drift_is_none_severity(self) -> None:
         report = _make_report(drifted_cols=[], all_cols=ALL_FEATURES)
 
-        result = compute_drift_severity(report)
+        result, per_feature = compute_drift_severity(report)
 
         assert result["severity"] == "none"
         assert result["drift_ratio"] == 0.0
         assert result["drifted_features"] == 0
+        assert all(v == 0 for v in per_feature.values())
 
     def test_single_drifted_feature_is_low_severity(self) -> None:
         # 1/7 ≈ 14.3% → low
         report = _make_report(drifted_cols=["transaction_amount"], all_cols=ALL_FEATURES)
 
-        result = compute_drift_severity(report)
+        result, per_feature = compute_drift_severity(report)
 
         assert result["severity"] == "low"
         assert result["drifted_features"] == 1
         assert result["total_features_checked"] == 7
+        assert per_feature["transaction_amount"] == 1
 
     def test_two_drifted_features_is_medium_severity(self) -> None:
         # 2/7 ≈ 28.6% → medium (>= 20%)
@@ -75,7 +77,7 @@ class TestComputeDriftSeverityThresholds:
             drifted_cols=["transaction_amount", "geo_distance_km"], all_cols=ALL_FEATURES
         )
 
-        result = compute_drift_severity(report)
+        result, _ = compute_drift_severity(report)
 
         assert result["severity"] == "medium"
         assert result["drifted_features"] == 2
@@ -85,7 +87,7 @@ class TestComputeDriftSeverityThresholds:
         drifted = ALL_FEATURES[:5]
         report = _make_report(drifted_cols=drifted, all_cols=ALL_FEATURES)
 
-        result = compute_drift_severity(report)
+        result, _ = compute_drift_severity(report)
 
         assert result["severity"] == "high"
         assert result["drifted_features"] == 5
@@ -93,17 +95,18 @@ class TestComputeDriftSeverityThresholds:
     def test_all_features_drifted_is_high_severity(self) -> None:
         report = _make_report(drifted_cols=ALL_FEATURES, all_cols=ALL_FEATURES)
 
-        result = compute_drift_severity(report)
+        result, per_feature = compute_drift_severity(report)
 
         assert result["severity"] == "high"
         assert result["drift_ratio"] == pytest.approx(1.0)
+        assert all(v == 1 for v in per_feature.values())
 
     def test_exactly_50_percent_is_high_severity(self) -> None:
         # Need an even number: 4 features, 2 drifted = 50% → high
         cols = ALL_FEATURES[:4]
         report = _make_report(drifted_cols=cols[:2], all_cols=cols)
 
-        result = compute_drift_severity(report)
+        result, _ = compute_drift_severity(report)
 
         assert result["severity"] == "high"
         assert result["drift_ratio"] == pytest.approx(0.5)
@@ -113,7 +116,7 @@ class TestComputeDriftSeverityThresholds:
         drifted = ALL_FEATURES[:3]
         report = _make_report(drifted_cols=drifted, all_cols=ALL_FEATURES)
 
-        result = compute_drift_severity(report)
+        result, _ = compute_drift_severity(report)
 
         assert result["drift_ratio"] == pytest.approx(3 / 7)
         assert result["total_features_checked"] == 7
