@@ -12,7 +12,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from services.common.logging import configure_logging, get_logger
 
@@ -57,7 +57,7 @@ def load_csv(path: str) -> pd.DataFrame:
 def build_pipeline() -> Pipeline:
     pre = ColumnTransformer(
         transformers=[
-            ("num", "passthrough", FEATURES_NUM),
+            ("num", StandardScaler(), FEATURES_NUM),
             ("bool", OneHotEncoder(handle_unknown="ignore"), FEATURES_BOOL),
         ],
         remainder="drop",

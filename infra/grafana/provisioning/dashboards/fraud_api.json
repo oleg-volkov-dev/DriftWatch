@@ -220,7 +220,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(fraud_predictions_total{result=\"fraud\"}[5m])) / sum(rate(api_requests_total[5m]))",
+          "expr": "sum(fraud_predictions_total{result=\"fraud\"}) / sum(fraud_predictions_total)",
           "legendFormat": "Fraud %"
         }
       ]
