@@ -23,6 +23,12 @@ MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:50
 REQUESTS = Counter("api_requests_total", "Total prediction requests")
 ERRORS = Counter("api_errors_total", "Total prediction errors")
 LATENCY = Histogram("api_request_latency_seconds", "Prediction latency seconds")
+FRAUD_PREDICTIONS = Counter("fraud_predictions_total", "Fraud predictions by outcome", ["result"])
+FRAUD_SCORE = Histogram(
+    "fraud_score",
+    "Distribution of fraud probability scores",
+    buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+)
 
 
 class Txn(BaseModel):
@@ -143,6 +149,9 @@ def predict(txn: Txn):
                 is_fraud=proba >= 0.5,
                 model_stage=_model_stage,
             )
+
+            FRAUD_PREDICTIONS.labels(result="fraud" if result.is_fraud else "legit").inc()
+            FRAUD_SCORE.observe(proba)
 
             logger.debug(
                 "Prediction made",
