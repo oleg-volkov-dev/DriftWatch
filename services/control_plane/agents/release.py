@@ -19,6 +19,67 @@ class ReleaseResult:
     details: Dict[str, Any]
 
 
+@dataclass(frozen=True)
+class RollbackResult:
+    rolled_back: bool
+    restored_version: Optional[str]
+    details: Dict[str, Any]
+
+
+def _get_current_production_version(model_name: str, client: MlflowClient) -> Optional[str]:
+    """Return the version number currently in Production, or None if none exists."""
+    try:
+        versions = client.get_latest_versions(model_name, stages=["Production"])
+        return versions[0].version if versions else None
+    except Exception:
+        return None
+
+
+def rollback_to_version(rollback_version: str) -> RollbackResult:
+    """Demote the current Production model and restore rollback_version to Production."""
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    model_name = os.environ.get("MODEL_NAME", "fraud_detector")
+
+    mlflow.set_tracking_uri(tracking_uri)
+    client = MlflowClient(tracking_uri=tracking_uri)
+
+    logger.info("Rollback initiated", model_name=model_name, target_version=rollback_version)
+
+    current_version = _get_current_production_version(model_name, client)
+
+    try:
+        client.transition_model_version_stage(
+            name=model_name,
+            version=rollback_version,
+            stage="Production",
+            archive_existing_versions=True,
+        )
+    except Exception as e:
+        logger.error(
+            "Rollback failed",
+            model_name=model_name,
+            target_version=rollback_version,
+            error=str(e),
+        )
+        return RollbackResult(False, None, {"reason": "rollback_failed", "error": str(e)})
+
+    logger.info(
+        "Rollback successful",
+        model_name=model_name,
+        restored_version=rollback_version,
+        demoted_version=current_version,
+    )
+    return RollbackResult(
+        True,
+        rollback_version,
+        {
+            "model": model_name,
+            "restored_version": rollback_version,
+            "demoted_version": current_version,
+        },
+    )
+
+
 def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
     tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     exp_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", "fraud-demo")
@@ -102,11 +163,14 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
         return ReleaseResult(False, None, {"reason": "no_model_versions"})
 
     latest = max(versions, key=lambda v: int(v.version))
+    previous_production_version = _get_current_production_version(model_name, client)
+
     logger.info(
         "Promoting model",
         model_name=model_name,
         version=latest.version,
         target_stage=promote_stage,
+        previous_production_version=previous_production_version,
     )
 
     try:
@@ -138,5 +202,11 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
     return ReleaseResult(
         True,
         promote_stage,
-        {"model": model_name, "version": latest.version, "auc": auc, "average_precision": ap},
+        {
+            "model": model_name,
+            "version": latest.version,
+            "auc": auc,
+            "average_precision": ap,
+            "previous_version": previous_production_version,
+        },
     )

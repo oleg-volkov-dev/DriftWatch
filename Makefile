@@ -8,7 +8,7 @@ PROJECT_NAME := driftwatch
 
 .PHONY: help up down build logs api-logs \
         gen-base gen-feature gen-blackfriday \
-        train promote-prod monitor control reload-api \
+        train promote-prod monitor control reload-api rollback \
         demo-drift-feature demo-black-friday \
         clean-shared \
         format lint test check ci-local \
@@ -30,6 +30,7 @@ help:
 	@echo "  promote-prod       Promote latest model version to Production"
 	@echo "  monitor            Run drift monitoring (Evidently) -> shared/reports/"
 	@echo "  control            Run control plane (Sentinel -> Planner -> Release)"
+	@echo "  rollback           Roll back to the previous Production model version"
 	@echo ""
 	@echo "  demo-drift-feature End-to-end demo: feature drift"
 	@echo "  demo-black-friday  End-to-end demo: shock event"
@@ -101,6 +102,10 @@ monitor:
 control:
 	docker compose --profile jobs run --rm control_plane \
 	  python /app/services/control_plane/runner.py
+
+rollback:
+	docker compose --profile jobs run --rm control_plane \
+	  python /app/services/control_plane/rollback.py
 
 # --- Demo flows ---
 demo-drift-feature: gen-base train promote-prod gen-feature monitor control reload-api

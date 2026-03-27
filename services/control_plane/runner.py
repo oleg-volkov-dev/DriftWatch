@@ -81,6 +81,23 @@ def main() -> None:
         )
 
         if release_res.promoted:
+            previous_version = release_res.details.get("previous_version")
+            if previous_version:
+                manifest = {
+                    "model_name": os.environ.get("MODEL_NAME", "fraud_detector"),
+                    "promoted_version": release_res.details.get("version"),
+                    "rollback_to_version": previous_version,
+                }
+                (events_dir / "rollback_manifest.json").write_text(
+                    json.dumps(manifest, indent=2), encoding="utf-8"
+                )
+                logger.info(
+                    "Rollback manifest written",
+                    promoted_version=manifest["promoted_version"],
+                    rollback_to_version=previous_version,
+                )
+            else:
+                logger.info("No previous Production version — rollback manifest not written")
             logger.info("Control plane cycle complete - model promoted", stage=release_res.stage)
         else:
             logger.warning(

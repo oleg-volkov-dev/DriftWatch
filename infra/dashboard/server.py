@@ -16,7 +16,7 @@ API  = "http://localhost:8000"
 ALLOWED_COMMANDS = {
     "demo-drift-feature", "demo-black-friday",
     "gen-base", "gen-feature", "gen-blackfriday",
-    "train", "promote-prod", "monitor", "control",
+    "train", "promote-prod", "monitor", "control", "rollback",
 }
 
 DEMO_COMMANDS = {"demo-drift-feature", "demo-black-friday"}
