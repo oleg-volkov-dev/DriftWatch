@@ -12,7 +12,6 @@ from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
 from services.common.logging import configure_logging, get_logger
 
-configure_logging("monitoring", json_logs=False)
 logger = get_logger(__name__)
 
 
@@ -28,6 +27,8 @@ def compute_drift_severity(report_dict: dict) -> tuple[dict, dict]:
         if m.get("metric") == "DataDriftTable":
             table = m.get("result", {}).get("drift_by_columns", {})
             for feature, v in table.items():
+                if feature == "is_fraud":
+                    continue
                 total += 1
                 detected = 1 if v.get("drift_detected") is True else 0
                 per_feature[feature] = detected
@@ -55,15 +56,17 @@ def compute_drift_severity(report_dict: dict) -> tuple[dict, dict]:
 def push_drift_metrics(summary: dict, per_feature: dict[str, int], pushgateway_url: str) -> None:
     registry = CollectorRegistry()
 
-    Gauge("monitoring_drift_ratio", "Fraction of features with detected drift", registry=registry).set(
-        summary["drift_ratio"]
-    )
-    Gauge("monitoring_drifted_features", "Number of features with detected drift", registry=registry).set(
-        summary["drifted_features"]
-    )
-    Gauge("monitoring_drift_severity", "Drift severity (0=none 1=low 2=medium 3=high)", registry=registry).set(
-        _SEVERITY_NUMERIC[summary["severity"]]
-    )
+    Gauge(
+        "monitoring_drift_ratio", "Fraction of features with detected drift", registry=registry
+    ).set(summary["drift_ratio"])
+    Gauge(
+        "monitoring_drifted_features", "Number of features with detected drift", registry=registry
+    ).set(summary["drifted_features"])
+    Gauge(
+        "monitoring_drift_severity",
+        "Drift severity (0=none 1=low 2=medium 3=high)",
+        registry=registry,
+    ).set(_SEVERITY_NUMERIC[summary["severity"]])
 
     feature_gauge = Gauge(
         "monitoring_feature_drift",
@@ -78,6 +81,7 @@ def push_drift_metrics(summary: dict, per_feature: dict[str, int], pushgateway_u
 
 
 def main() -> None:
+    configure_logging("monitoring", json_logs=False)
     ap = argparse.ArgumentParser()
     ap.add_argument("--reference", required=True)
     ap.add_argument("--current", required=True)
@@ -106,7 +110,10 @@ def main() -> None:
 
     logger.info("Running Evidently drift analysis")
     report = Report(metrics=[DataDriftPreset()])
-    report.run(reference_data=ref, current_data=cur)
+    report.run(
+        reference_data=ref.drop(columns=["is_fraud"], errors="ignore"),
+        current_data=cur.drop(columns=["is_fraud"], errors="ignore"),
+    )
 
     out_dir = Path(args.report_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

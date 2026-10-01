@@ -34,6 +34,9 @@ def run_sentinel(report_dir: str = "/app/shared/reports") -> SentinelReport:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     severity = str(summary.get("severity", "none"))
 
+    if severity not in {"none", "low", "medium", "high"}:
+        raise ValueError(f"Unknown drift severity: {severity}")
+
     if severity in ("none", "low"):
         logger.info("No actionable incidents detected", severity=severity)
         return SentinelReport(
