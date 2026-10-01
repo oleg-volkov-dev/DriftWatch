@@ -25,7 +25,10 @@ def load_policy(policy_path: str) -> Dict[str, Any]:
     if not p.exists():
         raise FileNotFoundError(f"Policy file not found: {policy_path}")
     try:
-        return yaml.safe_load(p.read_text(encoding="utf-8"))
+        policy = yaml.safe_load(p.read_text(encoding="utf-8"))
+        if not isinstance(policy, dict):
+            raise ValueError("Policy must be a mapping")
+        return policy
     except yaml.YAMLError as e:
         raise ValueError(f"Invalid policy YAML at {policy_path}: {e}") from e
 
@@ -40,7 +43,10 @@ def plan(report: SentinelReport, policy_path: str) -> ExecutionPlan:
     policy = load_policy(policy_path)
     drift_policy = policy.get("drift_policy", {})
 
-    if report.incident_type == "none":
+    if report.severity not in {"none", "low", "medium", "high"}:
+        raise ValueError(f"Unknown drift severity: {report.severity}")
+
+    if report.severity == "none":
         action = drift_policy.get("on_none", {}).get("action", "noop")
         logger.info("No incident - no action required", action=action)
         return ExecutionPlan(action=action, notes="No incident.", policy=policy)

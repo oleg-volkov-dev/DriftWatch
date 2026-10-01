@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from data.generator.generate import FEATURES, _sigmoid, generate_df
 
@@ -179,11 +180,37 @@ class TestGenerateDfShock:
 
 
 class TestGenerateDfConceptDrift:
-    def test_concept_drift_generates_valid_data(self) -> None:
+    def test_unsupported_concept_drift_is_rejected(self) -> None:
         cfg = {
             **BASE_CFG,
             "drift": {"type": "concept", "concept_variant": "night_fraud"},
         }
-        df = generate_df(cfg)
-        assert len(df) == BASE_CFG["n_rows"]
-        assert df["is_fraud"].dtype == bool
+        with pytest.raises(ValueError, match="Unsupported drift type"):
+            generate_df(cfg)
+
+
+def test_sigmoid_extreme_values_do_not_overflow():
+    with np.errstate(over="raise"):
+        np.testing.assert_array_equal(_sigmoid(np.array([-1000, 0, 1000])), [0, 0.5, 1])
+
+
+@pytest.mark.parametrize("rows", [0, -1])
+def test_invalid_row_count_has_clear_error(rows):
+    with pytest.raises(ValueError, match="n_rows"):
+        generate_df({**BASE_CFG, "n_rows": rows})
+
+
+@pytest.mark.parametrize(
+    "drift",
+    [
+        {"type": "typo"},
+        {"type": "shock", "shock_name": "unknown"},
+        {"type": "feature", "amount_scale": -1},
+        {"type": "feature", "distance_scale": float("nan")},
+        {"type": "shock", "shock_name": "black_friday", "international_rate": 1.5},
+        {"type": "shock", "shock_name": "black_friday", "spike_hours": [24]},
+    ],
+)
+def test_invalid_drift_configuration_is_rejected(drift):
+    with pytest.raises(ValueError):
+        generate_df({**BASE_CFG, "drift": drift})

@@ -137,3 +137,53 @@ class TestPredictEndpointWithModel:
     def test_predict_model_stage_returned(self, client_with_model: TestClient) -> None:
         response = client_with_model.post("/predict", json=VALID_TXN)
         assert response.json()["model_stage"] == "Production"
+
+
+@pytest.mark.parametrize("probability", [float("nan"), float("inf"), -0.1, 1.1])
+def test_invalid_model_probabilities_are_errors(client_with_model, probability):
+    import services.api.main as api
+
+    api._model.predict_proba.return_value = np.array([[0.0, probability]])
+    response = client_with_model.post("/predict", json=VALID_TXN)
+    assert response.status_code == 500
+    assert "invalid probability" in response.json()["error"]
+
+
+def test_prediction_errors_are_valid_json(client_with_model):
+    import services.api.main as api
+
+    api._model.predict_proba.side_effect = ValueError('bad "column"\nvalue')
+    response = client_with_model.post("/predict", json=VALID_TXN)
+    assert response.status_code == 500
+    assert response.json()["error"] == 'bad "column"\nvalue'
+
+
+def test_failed_reload_preserves_working_model(monkeypatch):
+    import services.api.main as api
+
+    old_model = MagicMock()
+    monkeypatch.setattr(api, "_model", old_model)
+    monkeypatch.setattr(api, "_model_stage", "Production")
+    monkeypatch.setattr(api, "_model_version", "1")
+    with (
+        patch.object(api, "MlflowClient") as client,
+        patch.object(api.mlflow, "set_tracking_uri"),
+        patch.object(api.mlflow.sklearn, "load_model", side_effect=RuntimeError("offline")),
+    ):
+        client.return_value.get_latest_versions.return_value = [MagicMock(version="2")]
+        with TestClient(api.app) as c:
+            assert c.post("/reload").status_code == 503
+            assert c.get("/health").json()["version"] == "1"
+        assert api._model is old_model
+
+
+def test_no_production_model_does_not_load_unapproved_version(monkeypatch):
+    import services.api.main as api
+
+    monkeypatch.setattr(api, "_model", None)
+    with patch.object(api, "MlflowClient") as client, patch.object(api.mlflow, "set_tracking_uri"):
+        client.return_value.get_latest_versions.return_value = []
+        with TestClient(api.app) as c:
+            assert c.post("/reload").status_code == 503
+            assert c.get("/health").json()["model_loaded"] is False
+        client.return_value.search_model_versions.assert_not_called()

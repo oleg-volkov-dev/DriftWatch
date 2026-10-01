@@ -119,9 +119,9 @@ jobs:
 
     - name: Check MLflow model registration
       run: |
-        response=$(curl -s http://localhost:5000/api/2.0/mlflow/registered-models/list)
-        echo "MLflow response: $response"
-        echo "$response" | grep -q '"name"' && echo "Model registered successfully" || echo "No models registered yet"
+        curl -fsS 'http://localhost:5000/api/2.0/mlflow/registered-models/get?name=fraud_detector' \
+          | python -c 'import json, sys; model = json.load(sys.stdin)["registered_model"]; assert model["name"] == "fraud_detector"; assert model["latest_versions"]'
 
     - name: Shutdown services
+      if: always()
       run: docker compose down -v

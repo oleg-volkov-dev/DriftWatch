@@ -16,4 +16,3 @@ prometheus-client==0.21.1
 requests==2.32.3
 
 structlog==24.1.0
-python-json-logger==2.0.7

@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 
 import mlflow
+import numpy as np
 import pandas as pd
 from mlflow.tracking import MlflowClient
 from sklearn.compose import ColumnTransformer
@@ -12,11 +13,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from services.common.logging import configure_logging, get_logger
 
-configure_logging("training", json_logs=False)
 logger = get_logger(__name__)
 
 
@@ -48,8 +48,18 @@ def load_csv(path: str) -> pd.DataFrame:
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"Training CSV missing required columns: {missing}")
-    df["is_international"] = df["is_international"].astype(bool)
-    df["is_fraud"] = df["is_fraud"].astype(bool)
+    if df.empty:
+        raise ValueError("Training CSV must not be empty")
+    for column in FEATURES_BOOL + [LABEL]:
+        values = df[column].astype(str).str.strip().str.lower()
+        parsed = values.map(
+            {"true": True, "false": False, "1": True, "0": False, "1.0": True, "0.0": False}
+        )
+        if parsed.isna().any():
+            raise ValueError(f"Training column {column} must contain booleans or 0/1")
+        df[column] = parsed.astype(bool)
+    if not np.isfinite(df[FEATURES_NUM].to_numpy(dtype=float)).all():
+        raise ValueError("Training features must contain finite numbers")
     logger.info("Data loaded", rows=len(df), fraud_rate=f"{df['is_fraud'].mean():.1%}")
     return df
 
@@ -57,7 +67,7 @@ def load_csv(path: str) -> pd.DataFrame:
 def build_pipeline() -> Pipeline:
     pre = ColumnTransformer(
         transformers=[
-            ("num", "passthrough", FEATURES_NUM),
+            ("num", StandardScaler(), FEATURES_NUM),
             ("bool", OneHotEncoder(handle_unknown="ignore"), FEATURES_BOOL),
         ],
         remainder="drop",
@@ -84,7 +94,7 @@ def train_and_log(reference_csv: str) -> TrainResult:
     y = df[LABEL].astype(int)
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y
+        X, y, test_size=0.2, stratify=y, random_state=42
     )
 
     logger.info("Dataset split", train_size=len(X_train), test_size=len(X_test))
@@ -164,6 +174,7 @@ def promote_latest_to_production() -> None:
 
 
 def main() -> None:
+    configure_logging("training", json_logs=False)
     ap = argparse.ArgumentParser()
     ap.add_argument("--reference", required=True, help="Path to reference CSV")
     args = ap.parse_args()

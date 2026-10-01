@@ -93,3 +93,13 @@ class TestPlan:
         result = plan(report, policy_path=str(policy_path))
 
         assert result.action == "noop"
+
+
+def test_low_severity_policy_is_used_for_real_sentinel_report(tmp_path):
+    from services.control_plane.agents.sentinel import run_sentinel
+
+    (tmp_path / "monitoring_summary.json").write_text('{"severity": "low"}')
+    policy_path = tmp_path / "policy.yaml"
+    policy_path.write_text("drift_policy:\n  on_low:\n    action: retrain_and_evaluate\n")
+    report = run_sentinel(str(tmp_path))
+    assert plan(report, str(policy_path)).action == "retrain_and_evaluate"

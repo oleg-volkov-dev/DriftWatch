@@ -2,29 +2,37 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
 from evidently.metric_preset import DataDriftPreset
 from evidently.report import Report
+from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
 from services.common.logging import configure_logging, get_logger
 
-configure_logging("monitoring", json_logs=False)
 logger = get_logger(__name__)
 
 
-def compute_drift_severity(report_dict: dict) -> dict:
+_SEVERITY_NUMERIC = {"none": 0, "low": 1, "medium": 2, "high": 3}
+
+
+def compute_drift_severity(report_dict: dict) -> tuple[dict, dict]:
     drifted = 0
     total = 0
+    per_feature: dict[str, int] = {}
 
     for m in report_dict.get("metrics", []):
         if m.get("metric") == "DataDriftTable":
             table = m.get("result", {}).get("drift_by_columns", {})
-            for _, v in table.items():
+            for feature, v in table.items():
+                if feature == "is_fraud":
+                    continue
                 total += 1
-                if v.get("drift_detected") is True:
-                    drifted += 1
+                detected = 1 if v.get("drift_detected") is True else 0
+                per_feature[feature] = detected
+                drifted += detected
 
     drift_ratio = (drifted / total) if total else 0.0
 
@@ -36,19 +44,49 @@ def compute_drift_severity(report_dict: dict) -> dict:
     elif drift_ratio > 0.0:
         severity = "low"
 
-    return {
+    summary = {
         "drift_ratio": drift_ratio,
         "drifted_features": drifted,
         "total_features_checked": total,
         "severity": severity,
     }
+    return summary, per_feature
+
+
+def push_drift_metrics(summary: dict, per_feature: dict[str, int], pushgateway_url: str) -> None:
+    registry = CollectorRegistry()
+
+    Gauge(
+        "monitoring_drift_ratio", "Fraction of features with detected drift", registry=registry
+    ).set(summary["drift_ratio"])
+    Gauge(
+        "monitoring_drifted_features", "Number of features with detected drift", registry=registry
+    ).set(summary["drifted_features"])
+    Gauge(
+        "monitoring_drift_severity",
+        "Drift severity (0=none 1=low 2=medium 3=high)",
+        registry=registry,
+    ).set(_SEVERITY_NUMERIC[summary["severity"]])
+
+    feature_gauge = Gauge(
+        "monitoring_feature_drift",
+        "Per-feature drift detected (1=drifted 0=stable)",
+        ["feature"],
+        registry=registry,
+    )
+    for feature, value in per_feature.items():
+        feature_gauge.labels(feature=feature).set(value)
+
+    push_to_gateway(pushgateway_url, job="driftwatch_monitoring", registry=registry)
 
 
 def main() -> None:
+    configure_logging("monitoring", json_logs=False)
     ap = argparse.ArgumentParser()
     ap.add_argument("--reference", required=True)
     ap.add_argument("--current", required=True)
     ap.add_argument("--report-dir", default="/app/shared/reports")
+    ap.add_argument("--pushgateway", default=os.environ.get("PUSHGATEWAY_URL", ""))
     args = ap.parse_args()
 
     logger.info("Starting drift detection", reference=args.reference, current=args.current)
@@ -72,7 +110,10 @@ def main() -> None:
 
     logger.info("Running Evidently drift analysis")
     report = Report(metrics=[DataDriftPreset()])
-    report.run(reference_data=ref, current_data=cur)
+    report.run(
+        reference_data=ref.drop(columns=["is_fraud"], errors="ignore"),
+        current_data=cur.drop(columns=["is_fraud"], errors="ignore"),
+    )
 
     out_dir = Path(args.report_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -81,7 +122,7 @@ def main() -> None:
     report.save_html(str(html_path))
 
     rdict = report.as_dict()
-    summary = compute_drift_severity(rdict)
+    summary, per_feature = compute_drift_severity(rdict)
     summary["report_path"] = str(html_path)
 
     logger.info(
@@ -96,6 +137,13 @@ def main() -> None:
     json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     logger.info("Reports saved", html_report=str(html_path), json_summary=str(json_path))
+
+    if args.pushgateway:
+        try:
+            push_drift_metrics(summary, per_feature, args.pushgateway)
+            logger.info("Drift metrics pushed to Pushgateway", url=args.pushgateway)
+        except Exception as e:
+            logger.warning("Failed to push drift metrics to Pushgateway", error=str(e))
 
 
 if __name__ == "__main__":

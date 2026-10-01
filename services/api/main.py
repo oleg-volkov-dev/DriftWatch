@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import math
 import os
 from contextlib import asynccontextmanager
+from threading import Lock
 from typing import Optional
 
 import mlflow
@@ -10,11 +12,10 @@ from fastapi import FastAPI, HTTPException
 from mlflow.tracking import MlflowClient
 from prometheus_client import Counter, Histogram, generate_latest
 from pydantic import BaseModel, Field
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from services.common.logging import configure_logging, get_logger
 
-configure_logging("api", json_logs=False)
 logger = get_logger(__name__)
 
 MODEL_NAME = os.environ.get("MODEL_NAME", "fraud_detector")
@@ -23,15 +24,21 @@ MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:50
 REQUESTS = Counter("api_requests_total", "Total prediction requests")
 ERRORS = Counter("api_errors_total", "Total prediction errors")
 LATENCY = Histogram("api_request_latency_seconds", "Prediction latency seconds")
+FRAUD_PREDICTIONS = Counter("fraud_predictions_total", "Fraud predictions by outcome", ["result"])
+FRAUD_SCORE = Histogram(
+    "fraud_score",
+    "Distribution of fraud probability scores",
+    buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+)
 
 
 class Txn(BaseModel):
-    transaction_amount: float = Field(..., ge=0)
+    transaction_amount: float = Field(..., ge=0, allow_inf_nan=False)
     transaction_hour: int = Field(..., ge=0, le=23)
     customer_age: int = Field(..., ge=0, le=120)
     account_tenure_days: int = Field(..., ge=0)
     merchant_risk_score: float = Field(..., ge=0, le=1)
-    geo_distance_km: float = Field(..., ge=0)
+    geo_distance_km: float = Field(..., ge=0, allow_inf_nan=False)
     is_international: bool
 
 
@@ -46,49 +53,34 @@ _model_stage: Optional[str] = None
 _model_version: Optional[str] = None
 
 
+_model_lock = Lock()
+_reload_lock = Lock()
+
+
 def _load_model() -> None:
     global _model, _model_stage, _model_version
 
-    logger.info(
-        "Loading model from MLflow", model_name=MODEL_NAME, tracking_uri=MLFLOW_TRACKING_URI
-    )
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    client = MlflowClient(MLFLOW_TRACKING_URI)
-
-    try:
+    # Serialize reloads, but keep serving the previous model while downloading.
+    with _reload_lock:
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        client = MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
         versions = client.get_latest_versions(MODEL_NAME, stages=["Production"])
-        if versions:
-            _model_version = versions[0].version
-            version_uri = f"models:/{MODEL_NAME}/{_model_version}"
-            _model = mlflow.sklearn.load_model(version_uri)
-            _model_stage = "Production"
-            logger.info("Model loaded successfully", model_name=MODEL_NAME, stage="Production", version=_model_version)
-            return
-        logger.warning("No Production model found, trying latest", model_name=MODEL_NAME)
-    except Exception as e:
-        logger.warning("Production model failed to load, trying latest", error=str(e))
-
-    try:
-        all_versions = client.search_model_versions(f"name='{MODEL_NAME}'")
-        if all_versions:
-            latest = max(all_versions, key=lambda v: int(v.version))
-            _model_version = latest.version
-            version_uri = f"models:/{MODEL_NAME}/{_model_version}"
-            _model = mlflow.sklearn.load_model(version_uri)
-            _model_stage = latest.current_stage
-            logger.info("Model loaded successfully", model_name=MODEL_NAME, stage=_model_stage, version=_model_version)
-        else:
-            raise RuntimeError("No model versions found")
-    except Exception as e:
-        _model = None
-        _model_stage = "none"
-        _model_version = None
-        logger.warning("No model found in MLflow", model_name=MODEL_NAME, error=str(e))
+        if not versions:
+            raise RuntimeError("No Production model found. Promote a model before reloading.")
+        version = str(versions[0].version)
+        model = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/{version}")
+        with _model_lock:
+            _model, _model_stage, _model_version = model, "Production", version
+        logger.info("Model loaded successfully", model_name=MODEL_NAME, version=version)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    _load_model()
+    configure_logging("api", json_logs=False)
+    try:
+        _load_model()
+    except Exception as e:
+        logger.warning("Model unavailable at startup", error=str(e))
     yield
 
 
@@ -97,7 +89,14 @@ app = FastAPI(title="Fraud Inference API", version="0.1.0", lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    return {"ok": True, "model": MODEL_NAME, "stage": _model_stage, "version": _model_version, "model_loaded": _model is not None}
+    with _model_lock:
+        return {
+            "ok": True,
+            "model": MODEL_NAME,
+            "stage": _model_stage,
+            "version": _model_version,
+            "model_loaded": _model is not None,
+        }
 
 
 @app.post("/reload")
@@ -113,7 +112,7 @@ def reload():
             "message": f"Model reloaded successfully (stage: {_model_stage})",
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to reload model: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to reload model: {str(e)}") from e
 
 
 @app.get("/metrics")
@@ -125,7 +124,10 @@ def metrics():
 def predict(txn: Txn):
     REQUESTS.inc()
 
-    if _model is None:
+    with _model_lock:
+        model, stage = _model, _model_stage
+
+    if model is None:
         ERRORS.inc()
         return Response(
             content='{"error":"No model loaded. Train and register a model first."}',
@@ -136,26 +138,27 @@ def predict(txn: Txn):
     with LATENCY.time():
         try:
             df = pd.DataFrame([txn.model_dump()])
-            proba = max(0.0, min(1.0, float(_model.predict_proba(df)[0, 1])))
+            proba = float(model.predict_proba(df)[0, 1])
+            if not math.isfinite(proba) or not 0.0 <= proba <= 1.0:
+                raise ValueError("Model returned an invalid probability")
 
             result = Pred(
                 fraud_probability=proba,
                 is_fraud=proba >= 0.5,
-                model_stage=_model_stage,
+                model_stage=stage,
             )
+
+            FRAUD_PREDICTIONS.labels(result="fraud" if result.is_fraud else "legit").inc()
+            FRAUD_SCORE.observe(proba)
 
             logger.debug(
                 "Prediction made",
                 fraud_probability=f"{proba:.3f}",
                 is_fraud=result.is_fraud,
-                model_stage=_model_stage,
+                model_stage=stage,
             )
 
             return result
         except Exception as e:
             ERRORS.inc()
-            return Response(
-                content=f'{{"error":"{str(e)}"}}',
-                status_code=500,
-                media_type="application/json",
-            )
+            return JSONResponse(content={"error": str(e)}, status_code=500)

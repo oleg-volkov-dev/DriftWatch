@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -19,7 +20,70 @@ class ReleaseResult:
     details: Dict[str, Any]
 
 
-def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
+@dataclass(frozen=True)
+class RollbackResult:
+    rolled_back: bool
+    restored_version: Optional[str]
+    details: Dict[str, Any]
+
+
+def _get_current_production_version(model_name: str, client: MlflowClient) -> Optional[str]:
+    """Return the version number currently in Production, or None if none exists."""
+    versions = client.get_latest_versions(model_name, stages=["Production"])
+    return str(versions[0].version) if versions else None
+
+
+def rollback_to_version(
+    rollback_version: str, expected_current_version: Optional[str] = None
+) -> RollbackResult:
+    """Demote the current Production model and restore rollback_version to Production."""
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    model_name = os.environ.get("MODEL_NAME", "fraud_detector")
+
+    mlflow.set_tracking_uri(tracking_uri)
+    client = MlflowClient(tracking_uri=tracking_uri)
+
+    logger.info("Rollback initiated", model_name=model_name, target_version=rollback_version)
+
+    try:
+        current_version = _get_current_production_version(model_name, client)
+        if expected_current_version is not None and current_version != expected_current_version:
+            return RollbackResult(False, None, {"reason": "stale_rollback_manifest"})
+        client.transition_model_version_stage(
+            name=model_name,
+            version=rollback_version,
+            stage="Production",
+            archive_existing_versions=True,
+        )
+    except Exception as e:
+        logger.error(
+            "Rollback failed",
+            model_name=model_name,
+            target_version=rollback_version,
+            error=str(e),
+        )
+        return RollbackResult(False, None, {"reason": "rollback_failed", "error": str(e)})
+
+    logger.info(
+        "Rollback successful",
+        model_name=model_name,
+        restored_version=rollback_version,
+        demoted_version=current_version,
+    )
+    return RollbackResult(
+        True,
+        rollback_version,
+        {
+            "model": model_name,
+            "restored_version": rollback_version,
+            "demoted_version": current_version,
+        },
+    )
+
+
+def maybe_promote_latest_if_gates_pass(
+    policy: Dict[str, Any], run_id: Optional[str] = None
+) -> ReleaseResult:
     tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     exp_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", "fraud-demo")
     model_name = os.environ.get("MODEL_NAME", "fraud_detector")
@@ -40,20 +104,26 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
         return ReleaseResult(False, None, {"reason": "experiment_not_found"})
 
     try:
-        runs = client.search_runs(
-            [exp.experiment_id], order_by=["attributes.start_time DESC"], max_results=1
-        )
+        versions = list(client.search_model_versions(f"name='{model_name}'"))
+        if run_id is not None:
+            versions = [v for v in versions if v.run_id == run_id]
+        if not versions:
+            return ReleaseResult(False, None, {"reason": "no_model_versions"})
+        latest = max(versions, key=lambda v: int(v.version))
+        run = client.get_run(latest.run_id)
     except Exception as e:
-        logger.error("Failed to query MLflow runs", error=str(e))
+        logger.error("Failed to query MLflow candidate", error=str(e))
         return ReleaseResult(False, None, {"reason": "mlflow_query_failed", "error": str(e)})
 
-    if not runs:
-        logger.error("No training runs found", experiment_id=exp.experiment_id)
-        return ReleaseResult(False, None, {"reason": "no_runs"})
-
-    run = runs[0]
-    auc = float(run.data.metrics.get("auc", 0.0))
-    ap = float(run.data.metrics.get("average_precision", 0.0))
+    if run.info.experiment_id != exp.experiment_id or run.info.status != "FINISHED":
+        return ReleaseResult(False, None, {"reason": "invalid_candidate_run"})
+    try:
+        auc = float(run.data.metrics["auc"])
+        ap = float(run.data.metrics["average_precision"])
+    except (KeyError, TypeError, ValueError):
+        return ReleaseResult(False, None, {"reason": "missing_or_invalid_metrics"})
+    if not all(math.isfinite(v) and 0 <= v <= 1 for v in (auc, ap)):
+        return ReleaseResult(False, None, {"reason": "missing_or_invalid_metrics"})
 
     logger.info(
         "Latest model metrics retrieved",
@@ -96,17 +166,20 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
 
     promote_stage = str(rel.get("promote_stage", "Staging"))
 
-    versions = client.search_model_versions(f"name='{model_name}'")
-    if not versions:
-        logger.error("No model versions found in registry", model_name=model_name)
-        return ReleaseResult(False, None, {"reason": "no_model_versions"})
+    previous_production_version = (
+        _get_current_production_version(model_name, client)
+        if promote_stage == "Production"
+        else None
+    )
+    if previous_production_version == str(latest.version):
+        return ReleaseResult(False, None, {"reason": "already_in_production"})
 
-    latest = max(versions, key=lambda v: int(v.version))
     logger.info(
         "Promoting model",
         model_name=model_name,
         version=latest.version,
         target_stage=promote_stage,
+        previous_production_version=previous_production_version,
     )
 
     try:
@@ -138,5 +211,11 @@ def maybe_promote_latest_if_gates_pass(policy: Dict[str, Any]) -> ReleaseResult:
     return ReleaseResult(
         True,
         promote_stage,
-        {"model": model_name, "version": latest.version, "auc": auc, "average_precision": ap},
+        {
+            "model": model_name,
+            "version": str(latest.version),
+            "auc": auc,
+            "average_precision": ap,
+            "previous_version": previous_production_version,
+        },
     )

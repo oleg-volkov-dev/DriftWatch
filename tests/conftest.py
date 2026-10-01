@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -25,30 +26,17 @@ def _stub_module(name: str, **attrs) -> MagicMock:
     return sys.modules[name]
 
 
-# mlflow – used by training, release, and API modules
-_mlflow = _stub_module("mlflow")
-_mlflow.set_tracking_uri = MagicMock()
-_mlflow.set_experiment = MagicMock()
-_mlflow.start_run = MagicMock()
-_mlflow.log_metric = MagicMock()
-_mlflow.log_param = MagicMock()
-_mlflow.sklearn = MagicMock()
-_mlflow.pyfunc = MagicMock()
-_mlflow.tracking = MagicMock()
-_stub_module("mlflow.tracking")
-_stub_module("mlflow.sklearn")
-_stub_module("mlflow.pyfunc")
-
-# evidently – used by monitoring module
-_stub_module("evidently")
-_stub_module("evidently.metric_preset")
-_stub_module("evidently.report")
-
-# prometheus_client – used by API module
-_prom = _stub_module("prometheus_client")
-_prom.Counter = MagicMock(return_value=MagicMock())
-_prom.Histogram = MagicMock(return_value=MagicMock())
-_prom.generate_latest = MagicMock(return_value=b"# metrics\n")
+for package, submodules in {
+    "mlflow": ("tracking", "sklearn", "pyfunc"),
+    "evidently": ("metric_preset", "report"),
+    "prometheus_client": (),
+}.items():
+    if importlib.util.find_spec(package) is None:
+        module = _stub_module(package)
+        for submodule in submodules:
+            setattr(module, submodule, _stub_module(f"{package}.{submodule}"))
+        if package == "prometheus_client":
+            module.generate_latest.return_value = b"# metrics\n"
 
 
 @pytest.fixture()
