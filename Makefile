@@ -35,7 +35,7 @@ help:
 	@echo "  demo-drift-feature End-to-end demo: feature drift"
 	@echo "  demo-black-friday  End-to-end demo: shock event"
 	@echo ""
-	@echo "  clean-shared       Remove shared artifacts volume"
+	@echo "  clean-shared       Remove generated files in this project’s shared directory"
 	@echo ""
 	@echo "Development & CI/CD:"
 	@echo "  dashboard          Open the service dashboard in browser"
@@ -53,7 +53,7 @@ dashboard:
 	@sleep 0.4 && open http://localhost:8765
 
 up:
-	docker compose up -d --build mlflow prometheus grafana api
+	docker compose up -d --build mlflow pushgateway prometheus grafana api
 	@-[ -f .dashboard.pid ] && kill $$(cat .dashboard.pid) 2>/dev/null; rm -f .dashboard.pid
 	@python3 infra/dashboard/server.py & echo $$! > .dashboard.pid
 	@sleep 0.4 && open http://localhost:8765
@@ -106,20 +106,35 @@ control:
 rollback:
 	docker compose --profile jobs run --rm control_plane \
 	  python /app/services/control_plane/rollback.py
+	$(MAKE) reload-api
 
 # --- Demo flows ---
-demo-drift-feature: gen-base train promote-prod gen-feature monitor control reload-api
+demo-drift-feature:
+	$(MAKE) gen-base
+	$(MAKE) train
+	$(MAKE) promote-prod
+	$(MAKE) gen-feature
+	$(MAKE) monitor
+	$(MAKE) control
+	$(MAKE) reload-api
 
-demo-black-friday: gen-base train promote-prod gen-blackfriday monitor control reload-api
+demo-black-friday:
+	$(MAKE) gen-base
+	$(MAKE) train
+	$(MAKE) promote-prod
+	$(MAKE) gen-blackfriday
+	$(MAKE) monitor
+	$(MAKE) control
+	$(MAKE) reload-api
 
 reload-api:
 	@echo "Reloading model in API container..."
 	@curl -sf -X POST http://localhost:8000/reload | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\"  Model reloaded: {d['model']} (stage: {d['stage']})\")" \
-	  || echo "  Warning: could not reload API model (is the API running?)"
+	  || { echo "  Failed to reload API model (is the API running?)"; exit 1; }
 
 # --- Utilities ---
 clean-shared:
-	docker volume rm -f $$(docker volume ls -q | grep -E "_shared$$" || true)
+	find shared/data shared/reports shared/events -type f -delete
 
 # --- Development & CI/CD ---
 setup-dev:
@@ -142,12 +157,12 @@ lint:
 	@echo "Running ruff linter..."
 	ruff check .
 	@echo "Running type checks with mypy..."
-	mypy services/ data/ --ignore-missing-imports --no-strict-optional || true
+	mypy services/ data/ --ignore-missing-imports --no-strict-optional
 	@echo "Linting complete!"
 
 test:
 	@echo "Running tests with coverage..."
-	pytest --cov=services --cov=data --cov-report=term-missing --cov-report=html || true
+	pytest --cov=services --cov=data --cov-report=term-missing --cov-report=html
 	@echo "Tests complete! Coverage report: htmlcov/index.html"
 
 check: format lint test
@@ -163,7 +178,7 @@ ci-local:
 	ruff check .
 	@echo ""
 	@echo "=== Running tests ==="
-	pytest --cov=services --cov=data --cov-report=term-missing || true
+	pytest --cov=services --cov=data --cov-report=term-missing
 	@echo ""
 	@echo "=== Testing Docker builds ==="
 	docker build -f services/api/Dockerfile -t driftwatch-api:test .

@@ -83,7 +83,7 @@ DriftWatch simulates a complete ML lifecycle where models monitor themselves and
 
 - Docker & Docker Compose
 - Python 3.11+ (for data generation)
-- `pip install pyyaml numpy pandas`
+- `pip install pyyaml numpy pandas structlog`
 
 ### 1. Start Services
 
@@ -153,7 +153,7 @@ Sudden late-night spike in transaction volume with elevated fraud rates. The ret
 make demo-black-friday
 ```
 
-To see predictions change: after either demo completes, try the predict form with `Hour = 22` and `Amount = 1500`.
+After either demo completes, try the predict form with `Hour = 22` and `Amount = 1500`. A retrained model replaces Production only if it passes the configured quality gates; a blocked release keeps the existing model and predictions.
 
 ---
 
@@ -199,6 +199,8 @@ quality_gates:
 If gates pass → promote to Staging/Production
 If gates fail → block deployment, log reason
 
+Release evaluation uses the registered version belonging to the current training run. The API serves only Production models; failed reloads return HTTP 503 and preserve the working model. `make rollback` checks that its manifest still matches Production, restores the previous version, and reloads the API. A successful rollback consumes its manifest.
+
 ---
 
 ## Project Structure
@@ -222,7 +224,7 @@ driftwatch/
 │       │   └── promotion.yaml
 │       └── runner.py
 ├── infra/
-│   ├── dashboard/          # Web dashboard (server.py + embedded HTML)
+│   ├── dashboard/          # Web dashboard (server.py serves dashboard.html)
 │   ├── prometheus/
 │   └── grafana/
 ├── shared/                 # Runtime artifacts (gitignored)
@@ -314,8 +316,10 @@ make install-hooks  # Install git pre-commit hooks
 ```bash
 make format  # Auto-fix imports and style with ruff
 make lint    # Check with Ruff & mypy
-make test    # Run tests with coverage
+make test    # Run tests with coverage (failures return nonzero)
 ```
+
+The test suite includes an isolated MLflow/Evidently lifecycle test covering generation, training, drift detection, promotion, inference, and rollback. Install both requirements files to run it. Lightweight environments without MLflow use dependency stubs for unit tests and skip this integration test.
 
 Pre-commit hooks run automatically on `git commit`. GitHub Actions run on every push:
 - Code formatting validation

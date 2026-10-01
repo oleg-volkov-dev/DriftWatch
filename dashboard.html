@@ -6,804 +6,614 @@
   <title>DriftWatch</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #0f1117;
       color: #e2e8f0;
       min-height: 100vh;
-      padding: 48px 24px;
+      padding: 40px 24px 80px;
     }
 
-    header {
-      max-width: 900px;
-      margin: 0 auto 48px;
+    /* ── Two-column layout ── */
+    #layout { display: flex; gap: 20px; max-width: 1380px; margin: 0 auto; align-items: flex-start; }
+    #main   { flex: 1; min-width: 0; max-width: 960px; }
+    .spacer { height: 32px; }
+
+    /* ── Header ── */
+    header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 20px; margin-bottom: 36px; }
+    h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; color: #f8fafc; }
+    h1 span { color: #6366f1; }
+    header p { margin-top: 6px; color: #64748b; font-size: 0.88rem; line-height: 1.55; max-width: 460px; }
+
+    /* ── Status badges ── */
+    .status-row { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
+    .badge { display: flex; align-items: center; gap: 6px; font-size: 0.73rem; font-weight: 500; color: #94a3b8; background: #1e2330; border: 1px solid #2d3348; border-radius: 20px; padding: 4px 10px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #334155; transition: background 0.4s; flex-shrink: 0; }
+    .dot.up   { background: #22c55e; box-shadow: 0 0 6px #22c55e77; }
+    .dot.down { background: #475569; }
+
+    /* ── Section label ── */
+    .section-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #475569; margin-bottom: 12px; }
+
+    /* ── Card base ── */
+    .card { background: #1e2330; border: 1px solid #2d3348; border-radius: 10px; padding: 20px; }
+
+    /* ── Services grid ── */
+    .services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+    .svc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .icon { width: 30px; height: 30px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+    .svc-title { font-size: 0.9rem; font-weight: 600; color: #f1f5f9; }
+    .svc-desc  { font-size: 0.76rem; color: #64748b; line-height: 1.5; margin-bottom: 10px; }
+    .links { display: flex; flex-wrap: wrap; gap: 5px; }
+    .lnk { font-size: 0.71rem; font-weight: 500; padding: 3px 9px; border-radius: 5px; border: 1px solid; cursor: pointer; transition: background 0.12s, color 0.12s; text-decoration: none; }
+    .lnk-p { color: #818cf8; border-color: #3730a3; background: #1e1b4b; }
+    .lnk-p:hover { background: #312e81; color: #c7d2fe; }
+    .lnk-s { color: #94a3b8; border-color: #2d3348; background: transparent; }
+    .lnk-s:hover { background: #2d3348; color: #cbd5e1; }
+    .bg-green  { background: #052e16; }
+    .bg-blue   { background: #0c1a2e; }
+    .bg-orange { background: #1c0a00; }
+    .bg-indigo { background: #1e1b4b; }
+
+    /* ── Predict section ── */
+    .predict-card { background: #1e2330; border: 1px solid #2d3348; border-radius: 10px; padding: 24px; }
+    .fields-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 16px; }
+    .field label { display: block; font-size: 0.72rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+    .field input[type="number"] {
+      width: 100%; background: #0f1117; border: 1px solid #2d3348; border-radius: 6px;
+      padding: 8px 10px; color: #e2e8f0; font-size: 0.9rem;
+      outline: none; transition: border-color 0.15s;
     }
-
-    header h1 {
-      font-size: 2rem;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      color: #f8fafc;
+    .field input[type="number"]:focus { border-color: #6366f1; }
+    .predict-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .check-label { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #94a3b8; cursor: pointer; }
+    .check-label input { width: 16px; height: 16px; accent-color: #6366f1; cursor: pointer; }
+    .btn-row { display: flex; gap: 8px; }
+    .btn {
+      font-size: 0.82rem; font-weight: 600; padding: 9px 18px; border-radius: 7px;
+      border: 1px solid; cursor: pointer; transition: background 0.12s, color 0.12s;
     }
+    .btn-predict { color: #818cf8; border-color: #3730a3; background: #1e1b4b; }
+    .btn-predict:hover:not(:disabled) { background: #312e81; color: #c7d2fe; }
+    .btn-reload  { color: #94a3b8; border-color: #2d3348; background: transparent; }
+    .btn-reload:hover:not(:disabled)  { background: #2d3348; color: #cbd5e1; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    header h1 span {
-      color: #6366f1;
+    /* ── Predict result ── */
+    #predict-result { margin-top: 20px; padding-top: 20px; border-top: 1px solid #2d3348; display: none; }
+    .result-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .result-badge {
+      font-size: 1rem; font-weight: 800; letter-spacing: 0.05em;
+      padding: 8px 20px; border-radius: 8px; border: 2px solid;
     }
+    .result-badge.fraud { color: #f87171; border-color: #7f1d1d; background: #1c0505; }
+    .result-badge.safe  { color: #4ade80; border-color: #14532d; background: #021308; }
+    .result-prob { flex: 1; min-width: 160px; }
+    .result-prob-label { font-size: 0.72rem; color: #64748b; margin-bottom: 5px; }
+    .result-prob-val { font-size: 1.4rem; font-weight: 700; color: #f1f5f9; }
+    .bar-wrap { height: 6px; background: #2d3348; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+    .bar { height: 100%; border-radius: 3px; transition: width 0.4s, background 0.4s; }
+    .result-stage { font-size: 0.75rem; color: #475569; margin-top: 6px; }
+    #predict-error { margin-top: 20px; padding-top: 20px; border-top: 1px solid #2d3348; font-size: 0.82rem; color: #f87171; display: none; }
 
-    header p {
-      margin-top: 10px;
-      color: #94a3b8;
-      font-size: 0.95rem;
-      line-height: 1.6;
-      max-width: 600px;
+    /* ── Model status card ── */
+    .model-status-card {
+      display: flex; align-items: center; gap: 10px;
+      background: #1e2330; border: 1px solid #2d3348; border-radius: 8px;
+      padding: 10px 14px; margin-bottom: 0; transition: border-color 0.3s, background 0.3s;
     }
+    .model-status-card.ok   { border-color: #166534; background: #042012; }
+    .model-status-card.warn { border-color: #78350f; background: #1c1200; }
+    .model-dot { width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0; transition: background 0.3s; }
+    .model-dot.ok   { background: #22c55e; box-shadow: 0 0 5px #22c55e88; }
+    .model-dot.warn { background: #f59e0b; }
+    .model-status-text { flex: 1; font-size: 0.82rem; color: #94a3b8; }
+    .model-status-text strong { color: #f1f5f9; }
+    .model-version { display: inline-block; font-size: 0.68rem; font-weight: 600; color: #818cf8; background: #1e1b4b; border: 1px solid #3730a3; border-radius: 4px; padding: 1px 6px; margin-left: 4px; }
+    .model-stage   { display: inline-block; font-size: 0.68rem; font-weight: 600; color: #4ade80; background: #042012; border: 1px solid #166534; border-radius: 4px; padding: 1px 6px; margin-left: 4px; }
 
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 16px;
-      max-width: 900px;
-      margin: 0 auto;
+    /* ── Pipeline flowchart ── */
+    .pipe-flow { display: flex; flex-direction: column; gap: 8px; }
+    .pipe-row  { display: flex; align-items: center; gap: 6px; }
+    .pipe-ha { color: #475569; font-size: 0.9rem; padding: 0 2px; flex-shrink: 0; line-height: 1; }
+    .pipe-node {
+      width: 128px; min-height: 108px; flex-shrink: 0;
+      background: #1e2330; border: 1px solid #2d3348; border-radius: 10px;
+      padding: 10px; display: flex; flex-direction: column; gap: 5px;
     }
-
-    .card {
-      background: #1e2330;
-      border: 1px solid #2d3348;
-      border-radius: 12px;
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      transition: border-color 0.15s, box-shadow 0.15s;
+    .pipe-num {
+      width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+      background: #1e1b4b; border: 1px solid #3730a3;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; font-weight: 700; color: #818cf8;
     }
+    .pipe-label { font-size: 0.78rem; font-weight: 600; color: #f1f5f9; line-height: 1.3; flex: 1; }
+    .pipe-sub   { font-size: 0.66rem; color: #475569; line-height: 1.4; margin-top: -2px; }
+    .pipe-btns  { display: flex; flex-direction: column; gap: 3px; margin-top: auto; }
+    .btn-sm { font-size: 0.68rem !important; padding: 3px 7px !important; }
 
-    .card:hover {
-      border-color: #6366f1;
-      box-shadow: 0 0 0 1px #6366f133, 0 4px 20px #0006;
+    /* ── Demo cards ── */
+    .demo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .demo-title { font-size: 0.9rem; font-weight: 600; color: #f1f5f9; margin-bottom: 6px; }
+    .demo-desc  { font-size: 0.76rem; color: #64748b; line-height: 1.5; flex: 1; margin-bottom: 14px; }
+    .demo-card  { display: flex; flex-direction: column; }
+    .btn-run { color: #818cf8; border-color: #3730a3; background: #1e1b4b; width: fit-content; }
+    .btn-run:hover:not(:disabled) { background: #312e81; color: #c7d2fe; }
+    .btn-run.running { border-color: #ca8a04; background: #1c1400; color: #fbbf24; }
+    .btn-run.ok { border-color: #166534; background: #042012; color: #4ade80; }
+
+    /* ── Terminal panel ── */
+    #terminal-panel {
+      display: none; flex-direction: column;
+      width: 400px; flex-shrink: 0;
+      position: sticky; top: 24px;
+      max-height: calc(100vh - 48px);
     }
-
-    .card-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    .term-header { display: flex; align-items: center; justify-content: space-between; background: #161b27; border: 1px solid #2d3348; border-bottom: none; border-radius: 8px 8px 0 0; padding: 8px 14px; }
+    .term-title  { font-size: 0.73rem; font-weight: 600; color: #64748b; font-family: "SF Mono", monospace; }
+    .term-close  { font-size: 0.73rem; color: #475569; background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+    .term-close:hover { background: #2d3348; color: #94a3b8; }
+    #terminal-output {
+      background: #0a0d14; border: 1px solid #2d3348; border-radius: 0 0 8px 8px;
+      padding: 14px 16px; font-family: "SF Mono", "Fira Code", monospace; font-size: 0.74rem;
+      line-height: 1.6; color: #94a3b8; flex: 1; overflow-y: auto;
+      white-space: pre-wrap; word-break: break-all;
     }
-
-    .icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-      flex-shrink: 0;
-    }
-
-    .card-title {
-      font-size: 1rem;
-      font-weight: 600;
-      color: #f1f5f9;
-    }
-
-    .card-desc {
-      font-size: 0.82rem;
-      color: #64748b;
-      line-height: 1.55;
-      flex: 1;
-    }
-
-    .links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 4px;
-    }
-
-    .link {
-      display: inline-block;
-      font-size: 0.75rem;
-      font-weight: 500;
-      padding: 4px 10px;
-      border-radius: 6px;
-      text-decoration: none;
-      border: 1px solid;
-      transition: background 0.12s, color 0.12s;
-    }
-
-    .link-primary {
-      color: #818cf8;
-      border-color: #3730a3;
-      background: #1e1b4b;
-    }
-    .link-primary:hover { background: #312e81; color: #c7d2fe; }
-
-    .link-secondary {
-      color: #94a3b8;
-      border-color: #2d3348;
-      background: transparent;
-    }
-    .link-secondary:hover { background: #2d3348; color: #cbd5e1; }
-
-    .section-label {
-      max-width: 900px;
-      margin: 0 auto 14px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: #475569;
-    }
-
-    .section-label:not(:first-of-type) { margin-top: 36px; }
-
-    /* Quick start */
-    .quickstart {
-      max-width: 900px;
-      margin: 0 auto 40px;
-      background: #1e2330;
-      border: 1px solid #2d3348;
-      border-radius: 12px;
-      padding: 24px 28px;
-    }
-
-    .quickstart h2 {
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: #475569;
-      margin-bottom: 16px;
-    }
-
-    .steps {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .step {
-      display: flex;
-      align-items: baseline;
-      gap: 14px;
-    }
-
-    .step-num {
-      font-size: 0.7rem;
-      font-weight: 700;
-      color: #6366f1;
-      background: #1e1b4b;
-      border: 1px solid #3730a3;
-      border-radius: 50%;
-      width: 20px;
-      height: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
-    .step-body {
-      font-size: 0.85rem;
-      color: #94a3b8;
-      line-height: 1.5;
-    }
-
-    .step-body code {
-      font-family: "SF Mono", "Fira Code", monospace;
-      font-size: 0.8rem;
-      background: #0f1117;
-      border: 1px solid #2d3348;
-      border-radius: 4px;
-      padding: 1px 6px;
-      color: #a5b4fc;
-    }
-
-    .step-body strong { color: #cbd5e1; font-weight: 600; }
-
-    .note {
-      margin-top: 14px;
-      padding-top: 14px;
-      border-top: 1px solid #2d3348;
-      font-size: 0.78rem;
-      color: #475569;
-      line-height: 1.55;
-    }
-
-    .note code {
-      font-family: "SF Mono", "Fira Code", monospace;
-      font-size: 0.75rem;
-      background: #0f1117;
-      border: 1px solid #2d3348;
-      border-radius: 4px;
-      padding: 1px 5px;
-      color: #64748b;
-    }
-
-    /* icon bg colors */
-    .bg-indigo  { background: #1e1b4b; }
-    .bg-green   { background: #052e16; }
-    .bg-orange  { background: #1c0a00; }
-    .bg-blue    { background: #0c1a2e; }
-    .bg-purple  { background: #1a0533; }
-
-    /* Tabs */
-    .tabs {
-      max-width: 900px;
-      margin: 0 auto 32px;
-      display: flex;
-      gap: 4px;
-      border-bottom: 1px solid #2d3348;
-      padding-bottom: 0;
-    }
-
-    .tab-btn {
-      padding: 10px 20px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: #64748b;
-      background: transparent;
-      border: none;
-      border-bottom: 2px solid transparent;
-      cursor: pointer;
-      transition: color 0.15s, border-color 0.15s;
-      margin-bottom: -1px;
-    }
-
-    .tab-btn:hover { color: #94a3b8; }
-    .tab-btn.active { color: #818cf8; border-bottom-color: #6366f1; }
-
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-
-    /* Model status banner */
-    .status-banner {
-      max-width: 900px;
-      margin: 0 auto 28px;
-      border-radius: 12px;
-      padding: 20px 24px;
-      display: flex;
-      align-items: flex-start;
-      gap: 16px;
-      border: 1px solid;
-    }
-
-    .status-banner.warn {
-      background: #1c1200;
-      border-color: #78350f;
-    }
-
-    .status-banner.ok {
-      background: #042012;
-      border-color: #166534;
-    }
-
-    .status-banner.checking {
-      background: #0f1117;
-      border-color: #2d3348;
-    }
-
-    .status-icon {
-      font-size: 1.6rem;
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
-
-    .status-body h3 {
-      font-size: 1rem;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-
-    .status-banner.warn  .status-body h3 { color: #fbbf24; }
-    .status-banner.ok    .status-body h3 { color: #4ade80; }
-    .status-banner.checking .status-body h3 { color: #94a3b8; }
-
-    .status-body p {
-      font-size: 0.84rem;
-      color: #94a3b8;
-      line-height: 1.6;
-    }
-
-    .status-body code {
-      font-family: "SF Mono", "Fira Code", monospace;
-      font-size: 0.78rem;
-      background: #0f1117;
-      border: 1px solid #2d3348;
-      border-radius: 4px;
-      padding: 1px 6px;
-      color: #a5b4fc;
-    }
-
-    .status-meta {
-      margin-top: 10px;
-      font-size: 0.78rem;
-      color: #475569;
-    }
-
-    /* Try prediction panel */
-    .predict-panel {
-      max-width: 900px;
-      margin: 0 auto;
-      background: #1e2330;
-      border: 1px solid #2d3348;
-      border-radius: 12px;
-      padding: 24px 28px;
-    }
-
-    .predict-panel h2 {
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: #475569;
-      margin-bottom: 20px;
-    }
-
-    .predict-form {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 14px;
-      margin-bottom: 18px;
-    }
-
-    .field label {
-      display: block;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #64748b;
-      margin-bottom: 5px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .field input, .field select {
-      width: 100%;
-      padding: 7px 10px;
-      background: #0f1117;
-      border: 1px solid #2d3348;
-      border-radius: 6px;
-      color: #e2e8f0;
-      font-size: 0.85rem;
-      outline: none;
-      transition: border-color 0.12s;
-    }
-
-    .field input:focus, .field select:focus { border-color: #6366f1; }
-
-    .predict-btn {
-      padding: 9px 22px;
-      background: #4338ca;
-      color: #e0e7ff;
-      font-size: 0.85rem;
-      font-weight: 600;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background 0.12s;
-    }
-
-    .predict-btn:hover { background: #4f46e5; }
-    .predict-btn:disabled { background: #1e1b4b; color: #475569; cursor: not-allowed; }
-
-    /* Result display */
-    .predict-result {
-      margin-top: 20px;
-      padding: 16px 20px;
-      background: #0f1117;
-      border: 1px solid #2d3348;
-      border-radius: 10px;
-      display: none;
-    }
-
-    .predict-result.visible { display: block; }
-
-    .result-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .proba-bar-wrap {
-      flex: 1;
-      min-width: 200px;
-    }
-
-    .proba-label {
-      font-size: 0.75rem;
-      color: #64748b;
-      margin-bottom: 5px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .proba-bar {
-      height: 10px;
-      border-radius: 5px;
-      background: #2d3348;
-      overflow: hidden;
-    }
-
-    .proba-fill {
-      height: 100%;
-      border-radius: 5px;
-      transition: width 0.3s ease;
-    }
-
-    .proba-fill.safe       { background: #16a34a; }
-    .proba-fill.suspicious { background: #d97706; }
-    .proba-fill.fraud      { background: #dc2626; }
-
-    .verdict {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 14px;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      font-weight: 700;
-      flex-shrink: 0;
-    }
-
-    .verdict.safe       { background: #052e16; color: #4ade80; border: 1px solid #166534; }
-    .verdict.suspicious { background: #1c1200; color: #fbbf24; border: 1px solid #92400e; }
-    .verdict.fraud      { background: #1c0a0a; color: #f87171; border: 1px solid #991b1b; }
-
-    .proba-pct {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: #f1f5f9;
-      flex-shrink: 0;
-    }
-
-    .result-stage {
-      font-size: 0.72rem;
-      color: #475569;
-      margin-top: 8px;
-    }
+    #terminal-output .prompt  { color: #6366f1; font-weight: 700; }
+    #terminal-output .success { color: #22c55e; font-weight: 600; }
+    #terminal-output .err     { color: #f87171; font-weight: 600; }
   </style>
 </head>
 <body>
+<div id="layout">
+<div id="main">
 
+  <!-- ── Header ── -->
   <header>
-    <h1>Drift<span>Watch</span></h1>
-    <p>
-      Autonomous MLOps platform for fraud detection with policy-driven drift response.
-      Monitors feature &amp; concept drift, triggers automated retraining, and promotes
-      new model versions to production without manual intervention.
-    </p>
+    <div>
+      <h1>Drift<span>Watch</span></h1>
+      <p>Autonomous MLOps platform for fraud detection with policy-driven drift response.</p>
+    </div>
+    <div class="status-row">
+      <div class="badge" data-service="mlflow">     <span class="dot"></span>MLflow</div>
+      <div class="badge" data-service="api">        <span class="dot"></span>API</div>
+      <div class="badge" data-service="grafana">    <span class="dot"></span>Grafana</div>
+      <div class="badge" data-service="prometheus"> <span class="dot"></span>Prometheus</div>
+    </div>
   </header>
 
-  <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('overview', this)">Overview</button>
-    <button class="tab-btn" onclick="switchTab('model-status', this)">Model Status</button>
-  </div>
-
-  <div id="tab-overview" class="tab-panel active">
-
-  <div class="quickstart">
-    <h2>Quick start</h2>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">1</div>
-        <div class="step-body"><strong>Install Docker Desktop</strong> and make sure it is running. That's the only dependency — everything else runs in containers.</div>
-      </div>
-      <div class="step">
-        <div class="step-num">2</div>
-        <div class="step-body">Start all services: <code>make up</code> — builds images on first run, starts MLflow, API, Prometheus, and Grafana, then opens this dashboard.</div>
-      </div>
-      <div class="step">
-        <div class="step-num">3</div>
-        <div class="step-body">Run a full end-to-end demo (pick one):<br>
-          <code>make demo-drift-feature</code> &nbsp;— gradual shift in transaction distributions<br>
-          <code>make demo-drift-concept</code> &nbsp;— same features, different fraud patterns<br>
-          <code>make demo-black-friday</code> &nbsp;&nbsp;— sudden spike shock event<br>
-          Each demo generates data → trains a model → promotes it → runs drift monitoring → triggers the control plane.
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num">4</div>
-        <div class="step-body">Check results in <strong>MLflow</strong> (model registry, training metrics) and call <code>POST /predict</code> via the Swagger UI to generate API traffic for Grafana/Prometheus.</div>
-      </div>
-    </div>
-    <p class="note">
-      Grafana and Prometheus only show data after <code>POST /predict</code> requests are made — the demo pipeline trains and monitors but does not call the inference API.
-      &nbsp;Local Python is only needed for development (<code>make lint</code>, <code>make test</code>).
-    </p>
-  </div>
-
-  <p class="section-label">Core services</p>
-  <div class="grid">
+  <!-- ── Services ── -->
+  <p class="section-label">Services</p>
+  <div class="services-grid">
 
     <div class="card">
-      <div class="card-header">
-        <div class="icon bg-green">🔍</div>
-        <div class="card-title">Fraud Inference API</div>
-      </div>
-      <p class="card-desc">
-        FastAPI service that serves the production fraud-detection model.
-        Accepts transaction features, returns fraud probability and binary label.
-      </p>
+      <div class="svc-header"><div class="icon bg-green">🔍</div><div class="svc-title">Fraud API</div></div>
+      <p class="svc-desc">FastAPI inference service. Use the predict form below to test it — use Reload model after running a demo.</p>
+    </div>
+
+    <div class="card">
+      <div class="svc-header"><div class="icon bg-blue">🧪</div><div class="svc-title">MLflow</div></div>
+      <p class="svc-desc">Experiment tracking and model registry. Check which model is in Production.</p>
       <div class="links">
-        <a class="link link-primary" href="http://localhost:8000/docs" target="_blank">Swagger UI</a>
-        <a class="link link-secondary" href="http://localhost:8000/health" target="_blank">/health</a>
-        <a class="link link-secondary" href="http://localhost:8000/metrics" target="_blank">/metrics</a>
+        <a class="lnk lnk-p" href="http://localhost:5000"          target="_blank">Open</a>
+        <a class="lnk lnk-s" href="http://localhost:5000/#/models" target="_blank">Models</a>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-header">
-        <div class="icon bg-blue">🧪</div>
-        <div class="card-title">MLflow</div>
-      </div>
-      <p class="card-desc">
-        Experiment tracking and model registry. Browse training runs, compare metrics,
-        and inspect which model version is currently in Production.
-      </p>
+      <div class="svc-header"><div class="icon bg-orange">📊</div><div class="svc-title">Grafana</div></div>
+      <p class="svc-desc">API latency, request rates, error counts. Populates after predict calls.</p>
       <div class="links">
-        <a class="link link-primary" href="http://localhost:5000" target="_blank">Open MLflow</a>
-        <a class="link link-secondary" href="http://localhost:5000/#/models" target="_blank">Models</a>
-        <a class="link link-secondary" href="http://localhost:5000" target="_blank">Experiments</a>
+        <a class="lnk lnk-p" href="http://localhost:3000"            target="_blank">Open</a>
+        <a class="lnk lnk-s" href="http://localhost:3000/dashboards" target="_blank">Dashboards</a>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-header">
-        <div class="icon bg-orange">📊</div>
-        <div class="card-title">Grafana</div>
-      </div>
-      <p class="card-desc">
-        Visualisation dashboards for API latency, request rates, error counts,
-        and drift signals collected by Prometheus.
-      </p>
+      <div class="svc-header"><div class="icon bg-indigo">🔥</div><div class="svc-title">Prometheus</div></div>
+      <p class="svc-desc">Raw metrics scraping from the API. Query counters and histograms.</p>
       <div class="links">
-        <a class="link link-primary" href="http://localhost:3000" target="_blank">Open Grafana</a>
-        <a class="link link-secondary" href="http://localhost:3000/dashboards" target="_blank">Dashboards</a>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <div class="icon bg-indigo">🔥</div>
-        <div class="card-title">Prometheus</div>
-      </div>
-      <p class="card-desc">
-        Metrics scraping and storage. Query raw counters and histograms from the
-        inference API, or explore targets and alert rules.
-      </p>
-      <div class="links">
-        <a class="link link-primary" href="http://localhost:9090" target="_blank">Open Prometheus</a>
-        <a class="link link-secondary" href="http://localhost:9090/targets" target="_blank">Targets</a>
-        <a class="link link-secondary" href="http://localhost:9090/graph" target="_blank">Graph</a>
+        <a class="lnk lnk-p" href="http://localhost:9090"         target="_blank">Open</a>
+        <a class="lnk lnk-s" href="http://localhost:9090/targets" target="_blank">Targets</a>
       </div>
     </div>
 
   </div>
 
-  <p class="section-label">Drift pipeline (run via <code style="font-size:0.7rem;color:#94a3b8">make</code>)</p>
-  <div class="grid">
+  <!-- ── Model status ── -->
+  <div class="spacer" style="height:16px"></div>
+  <div id="model-status-card" class="model-status-card">
+    <div id="model-dot" class="model-dot"></div>
+    <div id="model-status-text" class="model-status-text">Checking model…</div>
+    <button class="btn btn-reload" style="font-size:0.72rem;padding:4px 10px" onclick="reloadModel(this)">Reload</button>
+  </div>
 
-    <div class="card">
-      <div class="card-header">
-        <div class="icon bg-purple">⚙️</div>
-        <div class="card-title">Data Generation</div>
+  <!-- ── Predict ── -->
+  <div class="spacer"></div>
+  <p class="section-label">Try the fraud detection API</p>
+  <div class="predict-card">
+    <div class="fields-grid">
+      <div class="field">
+        <label>Amount ($)</label>
+        <input type="number" id="f-amount" value="150" min="0" step="0.01" />
       </div>
-      <p class="card-desc">
-        Synthetic transaction datasets with configurable drift types:
-        <strong>feature drift</strong>, <strong>concept drift</strong>, or <strong>shock events</strong> (Black Friday).
-      </p>
-      <div class="links">
-        <a class="link link-secondary" href="#" onclick="return false" title="make gen-base">make gen-base</a>
-        <a class="link link-secondary" href="#" onclick="return false" title="make gen-feature">make gen-feature</a>
-        <a class="link link-secondary" href="#" onclick="return false" title="make gen-blackfriday">make gen-blackfriday</a>
+      <div class="field">
+        <label>Hour (0–23)</label>
+        <input type="number" id="f-hour" value="2" min="0" max="23" />
+      </div>
+      <div class="field">
+        <label>Customer Age</label>
+        <input type="number" id="f-age" value="35" min="18" max="120" />
+      </div>
+      <div class="field">
+        <label>Account Tenure (days)</label>
+        <input type="number" id="f-tenure" value="180" min="0" />
+      </div>
+      <div class="field">
+        <label>Merchant Risk (0–1)</label>
+        <input type="number" id="f-risk" value="0.6" min="0" max="1" step="0.01" />
+      </div>
+      <div class="field">
+        <label>Distance (km)</label>
+        <input type="number" id="f-dist" value="500" min="0" />
+      </div>
+    </div>
+    <div class="predict-footer">
+      <label class="check-label">
+        <input type="checkbox" id="f-intl" /> International transaction
+      </label>
+      <div class="btn-row">
+        <button class="btn btn-predict" onclick="predict()">Predict</button>
+        <button class="btn btn-reload"  onclick="reloadModel(this)">Reload model</button>
+      </div>
+    </div>
+    <div id="predict-result">
+      <div class="result-row">
+        <div id="result-badge" class="result-badge">—</div>
+        <div class="result-prob">
+          <div class="result-prob-label">Fraud probability</div>
+          <div id="result-pct" class="result-prob-val">—</div>
+          <div class="bar-wrap"><div id="result-bar" class="bar" style="width:0%"></div></div>
+          <div id="result-stage" class="result-stage"></div>
+        </div>
+      </div>
+    </div>
+    <div id="predict-error"></div>
+  </div>
+
+  <!-- ── Full demos ── -->
+  <div class="spacer"></div>
+  <p class="section-label">Full demos — one command runs the entire pipeline end-to-end</p>
+  <div class="demo-grid">
+
+    <div class="card demo-card">
+      <div class="demo-title">Feature Drift</div>
+      <p class="demo-desc">Gradual shift in transaction distributions — amounts, distances, and risk scores scale over time. Runs: gen-base → train → promote → gen-feature → monitor → control → reload.</p>
+      <button class="btn btn-run" onclick="runCmd('demo-drift-feature', this)">▶ Run full demo</button>
+    </div>
+
+    <div class="card demo-card">
+      <div class="demo-title">Black Friday Shock</div>
+      <p class="demo-desc">Sudden spike event — late-night transaction surge with an elevated fraud multiplier. Simulates a one-off shock rather than gradual drift.</p>
+      <button class="btn btn-run" onclick="runCmd('demo-black-friday', this)">▶ Run full demo</button>
+    </div>
+
+  </div>
+
+  <!-- ── Pipeline flowchart ── -->
+  <div class="spacer"></div>
+  <p class="section-label">Pipeline — run steps individually</p>
+  <div class="pipe-flow">
+
+    <!-- Row 1: 1 → 2 → 3 → 4 -->
+    <div class="pipe-row">
+      <div class="pipe-node">
+        <div class="pipe-num">1</div>
+        <div class="pipe-label">Gen Reference</div>
+        <div class="pipe-sub">Baseline for drift detection</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run btn-sm" onclick="runCmd('gen-base', this)">▶ gen-base</button>
+        </div>
+      </div>
+      <div class="pipe-ha">→</div>
+      <div class="pipe-node">
+        <div class="pipe-num">2</div>
+        <div class="pipe-label">Gen Current</div>
+        <div class="pipe-sub">Pick a drift scenario</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run btn-sm" onclick="runCmd('gen-feature', this)" title="Gradual shift in amounts, distances, risk scores">▶ Feature drift</button>
+          <button class="btn btn-run btn-sm" onclick="runCmd('gen-blackfriday', this)" title="Sudden late-night spike with elevated fraud multiplier">▶ Black Friday</button>
+        </div>
+      </div>
+      <div class="pipe-ha">→</div>
+      <div class="pipe-node">
+        <div class="pipe-num">3</div>
+        <div class="pipe-label">Train Model</div>
+        <div class="pipe-sub">Register to MLflow</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run btn-sm" onclick="runCmd('train', this)">▶ train</button>
+        </div>
+      </div>
+      <div class="pipe-ha">→</div>
+      <div class="pipe-node">
+        <div class="pipe-num">4</div>
+        <div class="pipe-label">Promote</div>
+        <div class="pipe-sub">Set as Production in MLflow</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run btn-sm" onclick="runCmd('promote-prod', this)">▶ promote-prod</button>
+        </div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-header">
-        <div class="icon bg-green">🤖</div>
-        <div class="card-title">Control Plane</div>
+    <!-- Row 2: 5 → 6 → 7 -->
+    <div class="pipe-row">
+      <div class="pipe-node">
+        <div class="pipe-num">5</div>
+        <div class="pipe-label">Monitor</div>
+        <div class="pipe-sub">Evidently drift report</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run btn-sm" onclick="runCmd('monitor', this)">▶ monitor</button>
+        </div>
       </div>
-      <p class="card-desc">
-        Sentinel reads Evidently drift reports → Planner decides action →
-        Release retrains and promotes the model automatically.
-      </p>
-      <div class="links">
-        <a class="link link-secondary" href="#" onclick="return false" title="make control">make control</a>
-        <a class="link link-secondary" href="#" onclick="return false" title="make monitor">make monitor</a>
+      <div class="pipe-ha">→</div>
+      <div class="pipe-node">
+        <div class="pipe-num">6</div>
+        <div class="pipe-label">Control Plane</div>
+        <div class="pipe-sub">Sentinel → Planner → Release</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run btn-sm" onclick="runCmd('control', this)">▶ control</button>
+        </div>
       </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <div class="icon bg-blue">🚀</div>
-        <div class="card-title">End-to-End Demos</div>
-      </div>
-      <p class="card-desc">
-        One-command demos that run the full pipeline: generate data → train →
-        promote → monitor → control plane response.
-      </p>
-      <div class="links">
-        <a class="link link-secondary" href="#" onclick="return false">make demo-drift-feature</a>
-        <a class="link link-secondary" href="#" onclick="return false">make demo-drift-concept</a>
-        <a class="link link-secondary" href="#" onclick="return false">make demo-black-friday</a>
+      <div class="pipe-ha">→</div>
+      <div class="pipe-node">
+        <div class="pipe-num">7</div>
+        <div class="pipe-label">Reload API</div>
+        <div class="pipe-sub">Hot-swap Production model</div>
+        <div class="pipe-btns">
+          <button class="btn btn-run btn-sm" id="pipe-reload-btn" onclick="pipeReload(this)">▶ reload-api</button>
+        </div>
       </div>
     </div>
 
   </div>
 
-  </div><!-- end tab-overview -->
+</div><!-- /main -->
 
-  <div id="tab-model-status" class="tab-panel">
+<!-- ── Terminal panel (right side) ── -->
+<div id="terminal-panel">
+  <div class="term-header">
+    <span class="term-title" id="term-title">output</span>
+    <button class="term-close" onclick="closeTerminal()">✕ close</button>
+  </div>
+  <div id="terminal-output"></div>
+</div>
 
-    <!-- Status banner – updated by JS -->
-    <div id="status-banner" class="status-banner checking">
-      <div class="status-icon">⏳</div>
-      <div class="status-body">
-        <h3>Checking model status…</h3>
-        <p>Contacting the inference API at <code>localhost:8000</code>.</p>
-      </div>
-    </div>
+</div><!-- /layout -->
 
-    <!-- Try a prediction -->
-    <div class="predict-panel">
-      <h2>Try a prediction</h2>
-      <div class="predict-form">
-        <div class="field">
-          <label>Transaction Amount ($)</label>
-          <input id="f-amount" type="number" value="250" min="0" step="0.01">
-        </div>
-        <div class="field">
-          <label>Transaction Hour (0-23)</label>
-          <input id="f-hour" type="number" value="14" min="0" max="23">
-        </div>
-        <div class="field">
-          <label>Customer Age</label>
-          <input id="f-age" type="number" value="34" min="0" max="120">
-        </div>
-        <div class="field">
-          <label>Account Tenure (days)</label>
-          <input id="f-tenure" type="number" value="365" min="0">
-        </div>
-        <div class="field">
-          <label>Merchant Risk Score (0-1)</label>
-          <input id="f-risk" type="number" value="0.3" min="0" max="1" step="0.01">
-        </div>
-        <div class="field">
-          <label>Geo Distance (km)</label>
-          <input id="f-geo" type="number" value="12" min="0" step="0.1">
-        </div>
-        <div class="field">
-          <label>International?</label>
-          <select id="f-intl">
-            <option value="false">No</option>
-            <option value="true">Yes</option>
-          </select>
-        </div>
-      </div>
-      <button id="predict-btn" class="predict-btn" onclick="runPrediction()">Run Prediction</button>
-
-      <div id="predict-result" class="predict-result">
-        <div class="result-row">
-          <div class="proba-bar-wrap">
-            <div class="proba-label">Fraud Probability</div>
-            <div class="proba-bar"><div id="proba-fill" class="proba-fill safe" style="width:0%"></div></div>
-          </div>
-          <div id="proba-pct" class="proba-pct">0%</div>
-          <div id="verdict" class="verdict safe">Safe</div>
-        </div>
-        <div id="result-stage" class="result-stage"></div>
-      </div>
-    </div>
-
-  </div><!-- end tab-model-status -->
-
-  <script>
-    const API = 'http://localhost:8000';
-
-    function switchTab(name, btn) {
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.getElementById('tab-' + name).classList.add('active');
-      btn.classList.add('active');
-      if (name === 'model-status') checkModelStatus();
-    }
-
-    async function checkModelStatus() {
-      const banner = document.getElementById('status-banner');
-      try {
-        const res = await fetch(API + '/health', { signal: AbortSignal.timeout(4000) });
-        const data = await res.json();
-        if (data.model_loaded) {
-          banner.className = 'status-banner ok';
-          banner.innerHTML = `
-            <div class="status-icon">✅</div>
-            <div class="status-body">
-              <h3>Model is ready for predictions</h3>
-              <p>
-                <strong>${data.model}</strong> is loaded and serving in stage
-                <code>${data.stage}</code>. Use the form below to try a prediction.
-              </p>
-              <div class="status-meta">API reachable at <code>${API}</code></div>
-            </div>`;
-          document.getElementById('predict-btn').disabled = false;
-        } else {
-          showNoModel(banner, `Stage reported as <code>${data.stage}</code> — no model is currently loaded.`);
-        }
-      } catch (e) {
-        showNoModel(banner, `Could not reach the API at <code>${API}</code>. Make sure the stack is running (<code>make up</code>).`);
+<script>
+  // ── Status polling ────────────────────────────────────────────────────────
+  function updateStatus() {
+    fetch('/api/status').then(r => r.json()).then(status => {
+      for (const [svc, up] of Object.entries(status)) {
+        const b = document.querySelector(`[data-service="${svc}"] .dot`);
+        if (b) b.className = 'dot ' + (up ? 'up' : 'down');
       }
-    }
+    }).catch(() => {});
+  }
+  updateStatus();
+  setInterval(updateStatus, 5000);
 
-    function showNoModel(banner, reason) {
-      banner.className = 'status-banner warn';
-      banner.innerHTML = `
-        <div class="status-icon">⚠️</div>
-        <div class="status-body">
-          <h3>No model served yet</h3>
-          <p>${reason}<br>
-          Run a demo to train and promote a model:<br>
-          <code>make demo-drift-feature</code> &nbsp;·&nbsp;
-          <code>make demo-drift-concept</code> &nbsp;·&nbsp;
-          <code>make demo-black-friday</code>
-          </p>
-        </div>`;
-      document.getElementById('predict-btn').disabled = true;
-    }
-
-    async function runPrediction() {
-      const btn = document.getElementById('predict-btn');
-      btn.disabled = true;
-      btn.textContent = 'Running…';
-      try {
-        const body = {
-          transaction_amount: parseFloat(document.getElementById('f-amount').value),
-          transaction_hour:   parseInt(document.getElementById('f-hour').value),
-          customer_age:       parseInt(document.getElementById('f-age').value),
-          account_tenure_days: parseInt(document.getElementById('f-tenure').value),
-          merchant_risk_score: parseFloat(document.getElementById('f-risk').value),
-          geo_distance_km:    parseFloat(document.getElementById('f-geo').value),
-          is_international:   document.getElementById('f-intl').value === 'true',
-        };
-        const res = await fetch(API + '/predict', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(8000),
-        });
-        const data = await res.json();
-        if (data.error) { alert('API error: ' + data.error); return; }
-
-        const pct = Math.round(data.fraud_probability * 100);
-        let tier, label;
-        if (pct >= 75) {
-          tier = 'fraud'; label = 'Fraud';
-        } else if (pct >= 50) {
-          tier = 'suspicious'; label = 'Suspicious';
-        } else {
-          tier = 'safe'; label = 'Safe';
+  // ── Model status ──────────────────────────────────────────────────────────
+  async function updateModelStatus() {
+    const card = document.getElementById('model-status-card');
+    const dot  = document.getElementById('model-dot');
+    const text = document.getElementById('model-status-text');
+    try {
+      const resp = await fetch('/api/health', { signal: AbortSignal.timeout(4000) });
+      const d = await resp.json();
+      if (d.model_loaded) {
+        card.className = 'model-status-card ok';
+        dot.className  = 'model-dot ok';
+        text.replaceChildren();
+        for (const [tag, cls, value] of [
+          ['strong', '', d.model],
+          ['span', 'model-version', d.version ? `v${d.version}` : ''],
+          ['span', 'model-stage', d.stage || ''],
+        ]) {
+          const node = document.createElement(tag);
+          node.className = cls;
+          node.textContent = value;
+          text.appendChild(node);
         }
-
-        document.getElementById('proba-fill').className = 'proba-fill ' + tier;
-        document.getElementById('proba-fill').style.width = pct + '%';
-        document.getElementById('proba-pct').textContent = pct + '%';
-        document.getElementById('verdict').className = 'verdict ' + tier;
-        document.getElementById('verdict').textContent = label;
-        document.getElementById('result-stage').textContent =
-          `Model: ${data.model_stage ?? '—'}  ·  Threshold: ≥75% fraud, 50-75% suspicious, <50% safe`;
-        document.getElementById('predict-result').classList.add('visible');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Run Prediction';
+      } else {
+        card.className = 'model-status-card warn';
+        dot.className  = 'model-dot warn';
+        text.innerHTML = '<strong>No model loaded</strong> — run a demo or: train → promote → reload';
       }
+    } catch(e) {
+      card.className = 'model-status-card';
+      dot.className  = 'model-dot';
+      text.innerHTML = 'API unreachable — run <strong>make up</strong> first';
+    }
+  }
+  updateModelStatus();
+  setInterval(updateModelStatus, 8000);
+
+  // ── Predict ───────────────────────────────────────────────────────────────
+  async function predict() {
+    const btn = document.querySelector('.btn-predict');
+    btn.disabled = true;
+    btn.textContent = 'Predicting…';
+
+    const body = {
+      transaction_amount:   +document.getElementById('f-amount').value,
+      transaction_hour:     +document.getElementById('f-hour').value,
+      customer_age:         +document.getElementById('f-age').value,
+      account_tenure_days:  +document.getElementById('f-tenure').value,
+      merchant_risk_score:  +document.getElementById('f-risk').value,
+      geo_distance_km:      +document.getElementById('f-dist').value,
+      is_international:      document.getElementById('f-intl').checked,
+    };
+
+    document.getElementById('predict-error').style.display = 'none';
+    document.getElementById('predict-result').style.display = 'none';
+
+    try {
+      const resp = await fetch('/api/predict', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        showPredictError(data.detail || data.error || `Error ${resp.status}`);
+        return;
+      }
+
+      const pct  = Math.round(data.fraud_probability * 100);
+      const fraud = data.is_fraud;
+
+      // Color: green → yellow → red
+      const hue = Math.round((1 - data.fraud_probability) * 120); // 120=green, 0=red
+      const barColor = `hsl(${hue}, 85%, 50%)`;
+
+      document.getElementById('result-badge').textContent = fraud ? 'FRAUD' : 'SAFE';
+      document.getElementById('result-badge').className   = 'result-badge ' + (fraud ? 'fraud' : 'safe');
+      document.getElementById('result-pct').textContent   = pct + '%';
+      document.getElementById('result-bar').style.width      = pct + '%';
+      document.getElementById('result-bar').style.background = barColor;
+      document.getElementById('result-stage').textContent = data.model_stage ? `Model stage: ${data.model_stage}` : '';
+      document.getElementById('predict-result').style.display = 'block';
+    } catch(e) {
+      showPredictError('Could not reach API — is it running? (make up)');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Predict';
+    }
+  }
+
+  function showPredictError(msg) {
+    const el = document.getElementById('predict-error');
+    el.textContent = '⚠ ' + msg;
+    el.style.display = 'block';
+  }
+
+  // ── Pipeline reload step ──────────────────────────────────────────────────
+  async function pipeReload(btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ reloading…';
+    try {
+      const resp = await fetch('/api/reload', {method: 'POST'});
+      const data = await resp.json();
+      if (data.ok) {
+        btn.textContent = `✓ ${data.stage}`;
+        btn.classList.add('ok');
+        updateModelStatus();
+        setTimeout(() => { btn.textContent = '▶ reload-api'; btn.classList.remove('ok'); btn.disabled = false; }, 3000);
+      } else {
+        btn.textContent = '✗ failed';
+        setTimeout(() => { btn.textContent = '▶ reload-api'; btn.disabled = false; }, 2500);
+      }
+    } catch(e) {
+      btn.textContent = '✗ unreachable';
+      setTimeout(() => { btn.textContent = '▶ reload-api'; btn.disabled = false; }, 2500);
+    }
+  }
+
+  // ── Reload model ──────────────────────────────────────────────────────────
+  async function reloadModel(btn) {
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Reloading…';
+    try {
+      const resp = await fetch('/api/reload', {method: 'POST'});
+      const data = await resp.json();
+      btn.textContent = data.ok ? `Reloaded (${data.stage})` : 'Reload failed';
+      updateModelStatus();
+      setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 2500);
+    } catch(e) {
+      btn.textContent = 'Unreachable';
+      setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 2500);
+    }
+  }
+
+  // ── Demo runner ───────────────────────────────────────────────────────────
+  let activeBtn = null;
+
+  function addLine(text, cls) {
+    const out = document.getElementById('terminal-output');
+    const div = document.createElement('div');
+    if (cls) div.className = cls;
+    div.textContent = text;
+    out.appendChild(div);
+    out.scrollTop = out.scrollHeight;
+  }
+
+  function closeTerminal() {
+    const panel = document.getElementById('terminal-panel');
+    panel.style.display = 'none';
+    document.getElementById('terminal-output').innerHTML = '';
+  }
+
+  async function runCmd(cmd, btn) {
+    const panel = document.getElementById('terminal-panel');
+    const title = document.getElementById('term-title');
+
+    document.getElementById('terminal-output').innerHTML = '';
+    panel.style.display = 'flex';
+    title.textContent  = '$ make ' + cmd;
+
+    document.querySelectorAll('.btn-run').forEach(b => b.disabled = true);
+    if (activeBtn) { activeBtn.textContent = activeBtn.dataset.label || '▶ Run'; activeBtn.classList.remove('running'); }
+    activeBtn = btn;
+    btn.dataset.label = btn.textContent;
+    btn.textContent = '⏳ running…';
+    btn.classList.add('running');
+
+    addLine('$ make ' + cmd, 'prompt');
+
+    let exitCode = null;
+    try {
+      const resp = await fetch('/api/run/' + cmd, {method: 'POST'});
+      if (!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, {stream: true});
+        const events = buffer.split('\n\n');
+        buffer = events.pop();
+        for (const event of events) {
+          for (const line of event.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            const data = JSON.parse(line.slice(6));
+            if ('line' in data) addLine(data.line);
+            if ('exit' in data) {
+              exitCode = data.exit;
+              const ok = exitCode === 0;
+              addLine(ok ? '✓ Done' : `✗ Exited with code ${exitCode}`, ok ? 'success' : 'err');
+            }
+          }
+        }
+      }
+      if (exitCode === null) throw new Error('Command stream ended before reporting a result');
+    } catch(e) {
+      addLine('Error: ' + e.message, 'err');
+    } finally {
+      document.querySelectorAll('.btn-run').forEach(b => b.disabled = false);
+      btn.textContent = btn.dataset.label || '▶ Run';
+      btn.classList.remove('running');
+      activeBtn = null;
     }
 
-    // Auto-check on load if model-status tab is opened directly
-    if (window.location.hash === '#model-status') {
-      switchTab('model-status', document.querySelectorAll('.tab-btn')[1]);
-    }
-  </script>
+    if (exitCode === 0) updateModelStatus();
 
+    updateStatus();
+  }
+</script>
 </body>
 </html>
