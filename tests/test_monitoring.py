@@ -120,3 +120,11 @@ class TestComputeDriftSeverityThresholds:
 
         assert result["drift_ratio"] == pytest.approx(3 / 7)
         assert result["total_features_checked"] == 7
+
+
+def test_target_drift_is_not_counted_as_feature_drift():
+    report = _make_report(["is_fraud"], ALL_FEATURES + ["is_fraud"])
+    result, per_feature = compute_drift_severity(report)
+    assert result["severity"] == "none"
+    assert result["total_features_checked"] == 7
+    assert "is_fraud" not in per_feature

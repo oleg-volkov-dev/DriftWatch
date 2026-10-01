@@ -225,3 +225,22 @@ class TestTrainAndLog:
 
         assert "auc" in logged_metrics
         assert "average_precision" in logged_metrics
+
+
+@pytest.mark.parametrize("value", [None, "not-a-boolean", 2])
+def test_load_csv_rejects_invalid_booleans(tmp_path, value):
+    df = pd.DataFrame(SAMPLE_DATA)
+    df["is_fraud"] = df["is_fraud"].astype(object)
+    df.loc[0, "is_fraud"] = value
+    path = tmp_path / "invalid.csv"
+    df.to_csv(path, index=False)
+    with pytest.raises(ValueError, match="booleans"):
+        load_csv(str(path))
+
+
+def test_load_csv_normalizes_boolean_strings(tmp_path):
+    df = pd.DataFrame(SAMPLE_DATA)
+    df["is_fraud"] = [" false " if not v else " true " for v in df["is_fraud"]]
+    path = tmp_path / "strings.csv"
+    df.to_csv(path, index=False)
+    assert load_csv(str(path))["is_fraud"].tolist() == SAMPLE_DATA["is_fraud"]
