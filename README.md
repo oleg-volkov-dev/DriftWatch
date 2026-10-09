@@ -137,6 +137,34 @@ This will:
 
 All commands stream live output in a side panel. The model status card updates after every reload so you can see the version change in real time.
 
+### Grafana metrics
+
+Open [DriftWatch — API & Drift](http://localhost:3000/d/driftwatch-fraud-api).
+
+- **Online activity** comes from `/predict` calls. Generating datasets or running a
+  demo does not send prediction traffic. Attempts include inference errors and
+  unavailable-model responses; input-validation errors (422) are excluded.
+- **Counts, error fraction, and score statistics** use the selected time range.
+  Counts are Prometheus estimates that account for counter resets; they may be
+  fractional. Empty fractions or percentiles mean there were no observations,
+  or not enough scrapes. Graphs use an adaptive rolling window.
+- **Flagged predictions** are model scores at or above 0.5, not confirmed fraud.
+  Score percentiles are histogram estimates, not measures of model accuracy.
+  Execution latency excludes request validation, queuing, and network time.
+- **Offline drift** shows the latest successfully published monitoring result at
+  the selected end time. Check the result age and gateway health: batch values
+  persist between runs. Severity measures the fraction of input features that
+  drifted, excluding `is_fraud`. None/Low skips retraining under the default policy;
+  Medium/High triggers evaluation, with promotion subject to quality gates.
+- **Health indicators** distinguish API reachability, a loaded model, and gateway
+  reachability. Missing metrics are not treated as healthy zero values.
+
+Dashboard files refresh automatically. After changes to metric exporters or data
+source provisioning, rebuild the API with `docker compose up -d --build api`,
+restart Grafana with `docker compose restart grafana`, and run `make monitor` to
+publish the updated batch metrics. `make test-grafana` validates the dashboard's
+actual queries against Prometheus fixtures; CI runs this check too.
+
 ---
 
 ## Demo Scenarios

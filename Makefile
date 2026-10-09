@@ -15,7 +15,7 @@ RUN_JOB := docker compose --profile jobs run --build --rm
         train promote-prod monitor control reload-api rollback \
         demo-drift-feature demo-black-friday demo-card-testing \
         clean-shared \
-        format lint test check ci-local \
+        format lint test test-grafana check ci-local \
         setup-dev install-hooks dashboard
 
 help:
@@ -50,6 +50,7 @@ help:
 	@echo "  format             Auto-fix imports and style with ruff"
 	@echo "  lint               Run linting checks (ruff, mypy)"
 	@echo "  test               Run tests with coverage"
+	@echo "  test-grafana       Validate Grafana queries with Prometheus fixtures (Docker)"
 	@echo "  check              Run all quality checks (format + lint + test)"
 	@echo "  ci-local           Simulate CI pipeline locally"
 
@@ -184,7 +185,12 @@ test:
 	pytest --cov=services --cov=data --cov-report=term-missing --cov-report=html
 	@echo "Tests complete! Coverage report: htmlcov/index.html"
 
-check: format lint test
+test-grafana:
+	@set -o pipefail; python3 scripts/grafana_query_tests.py | docker run --rm -i --network none \
+	  --entrypoint sh prom/prometheus:v2.54.1 \
+	  -c 'cat > /tmp/dashboard-tests.yml && promtool test rules /tmp/dashboard-tests.yml'
+
+check: format lint test test-grafana
 	@echo "All quality checks passed!"
 
 ci-local:
