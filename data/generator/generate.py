@@ -26,6 +26,19 @@ FEATURES = [
     "is_international",
 ]
 
+SHOCK_DEFAULTS = {
+    "black_friday": {
+        "spike_hours": [20, 21, 22, 23],
+        "amount_scale": 2.0,
+        "fraud_spike_multiplier": 1.2,
+    },
+    "card_testing": {
+        "spike_hours": [0, 1, 2, 3, 4, 5],
+        "amount_scale": 0.05,
+        "fraud_spike_multiplier": 3.0,
+    },
+}
+
 
 @dataclass(frozen=True)
 class FraudLogic:
@@ -62,8 +75,13 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
     if drift_type not in {"none", "feature", "shock"}:
         raise ValueError(f"Unsupported drift type: {drift_type}")
     is_shock = drift_type == "shock"
-    if is_shock and drift.get("shock_name") != "black_friday":
-        raise ValueError("Unsupported shock_name; expected black_friday")
+    if is_shock:
+        shock_name = drift.get("shock_name")
+        if shock_name not in SHOCK_DEFAULTS:
+            raise ValueError(
+                f"Unsupported shock_name; expected one of: {', '.join(SHOCK_DEFAULTS)}"
+            )
+        drift = {**SHOCK_DEFAULTS[shock_name], **drift}
     for key in ("amount_scale", "distance_scale", "fraud_spike_multiplier"):
         value = float(drift.get(key, 1.0))
         if not np.isfinite(value) or value < 0:
@@ -122,7 +140,7 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
             merchant_risk_shift=risk_shift,
         )
 
-    # Specific time-window spike — simulates a sudden shock event (e.g. Black Friday)
+    # Time-window shocks: shopping surges or small card-testing transactions.
     if is_shock:
         is_spike = np.isin(transaction_hour, spike_hours)
         amount_scale = float(drift.get("amount_scale", 2.0))
@@ -139,7 +157,7 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
 
         logger.info(
             "Applied shock event",
-            shock_name="black_friday",
+            shock_name=shock_name,
             spike_hours=sorted(spike_hours),
             amount_scale=amount_scale,
             merchant_risk_shift=risk_shift,
@@ -171,7 +189,7 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
         prob = np.clip(
             prob * np.where(is_spike, float(drift.get("fraud_spike_multiplier", 1.2)), 1.0),
             0,
-            1,  # Fraud spike multiplier is +20% by default
+            1,
         )
 
     is_fraud = rng.random(size=n) < prob  # Bernoulli trial
