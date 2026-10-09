@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 import pytest
 
-from data.generator.generate import FEATURES, _sigmoid, generate_df
+from data.generator.generate import FEATURES, _load_config, _sigmoid, generate_df
 
 BASE_CFG = {
     "seed": 42,
@@ -145,6 +148,53 @@ class TestGenerateDfFeatureDrift:
 
 
 class TestGenerateDfShock:
+    def test_card_testing_reduces_amounts_and_increases_overnight_fraud(self) -> None:
+        cfg = {**BASE_CFG, "n_rows": 10000}
+        baseline = generate_df(cfg)
+        attacked = generate_df(
+            {**cfg, "drift": {"type": "shock", "shock_name": "card_testing"}}
+        )
+        overnight = attacked["transaction_hour"].isin(range(6))
+        assert attacked.loc[overnight, "transaction_amount"].median() < 5
+        assert (
+            attacked.loc[overnight, "is_fraud"].mean()
+            > baseline.loc[overnight, "is_fraud"].mean() + 0.3
+        )
+        pd.testing.assert_frame_equal(
+            attacked.loc[~overnight, FEATURES], baseline.loc[~overnight, FEATURES]
+        )
+
+    @pytest.mark.parametrize("shock_name", ["black_friday", "card_testing"])
+    def test_shock_overrides_control_window_amounts_and_fraud(self, shock_name) -> None:
+        baseline = generate_df(BASE_CFG)
+        attacked = generate_df({
+            **BASE_CFG,
+            "drift": {
+                "type": "shock",
+                "shock_name": shock_name,
+                "spike_hours": [12, 13],
+                "amount_scale": 1.0,
+                "fraud_spike_multiplier": 0.0,
+            },
+        })
+        window = attacked["transaction_hour"].isin([12, 13])
+        assert window.any()
+        assert not attacked.loc[window, "is_fraud"].any()
+        pd.testing.assert_frame_equal(attacked[FEATURES], baseline[FEATURES])
+        pd.testing.assert_frame_equal(attacked.loc[~window], baseline.loc[~window])
+
+    def test_card_testing_config_matches_defaults_and_is_reproducible(self) -> None:
+        path = Path(__file__).parents[1] / "data/generator/config/shock_card_testing.yaml"
+        cfg = _load_config(str(path))
+        configured = generate_df(cfg)
+        defaults = generate_df({
+            **cfg, "drift": {"type": "shock", "shock_name": "card_testing"}
+        })
+        pd.testing.assert_frame_equal(configured, defaults)
+        pd.testing.assert_frame_equal(configured, generate_df(cfg))
+        assert len(configured) == cfg["n_rows"]
+        assert configured["transaction_amount"].between(1, 15000).all()
+
     def test_black_friday_spikes_amounts_in_spike_hours(self) -> None:
         cfg = {
             **BASE_CFG,
