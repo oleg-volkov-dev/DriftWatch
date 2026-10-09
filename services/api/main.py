@@ -10,7 +10,7 @@ import mlflow
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from mlflow.tracking import MlflowClient
-from prometheus_client import Counter, Histogram, generate_latest
+from prometheus_client import Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, Response
 
@@ -25,6 +25,10 @@ REQUESTS = Counter("api_requests_total", "Total prediction requests")
 ERRORS = Counter("api_errors_total", "Total prediction errors")
 LATENCY = Histogram("api_request_latency_seconds", "Prediction latency seconds")
 FRAUD_PREDICTIONS = Counter("fraud_predictions_total", "Fraud predictions by outcome", ["result"])
+# Export both outcomes before the first prediction so a zero fraud count is
+# distinguishable from missing instrumentation.
+for outcome in ("fraud", "legit"):
+    FRAUD_PREDICTIONS.labels(result=outcome)
 FRAUD_SCORE = Histogram(
     "fraud_score",
     "Distribution of fraud probability scores",
@@ -51,6 +55,9 @@ class Pred(BaseModel):
 _model = None
 _model_stage: Optional[str] = None
 _model_version: Optional[str] = None
+
+MODEL_LOADED = Gauge("api_model_loaded", "Whether an inference model is loaded (1=yes 0=no)")
+MODEL_LOADED.set_function(lambda: float(_model is not None))
 
 
 _model_lock = Lock()

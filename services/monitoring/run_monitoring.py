@@ -63,6 +63,9 @@ def push_drift_metrics(summary: dict, per_feature: dict[str, int], pushgateway_u
         "monitoring_drifted_features", "Number of features with detected drift", registry=registry
     ).set(summary["drifted_features"])
     Gauge(
+        "monitoring_total_features", "Number of features checked for drift", registry=registry
+    ).set(summary["total_features_checked"])
+    Gauge(
         "monitoring_drift_severity",
         "Drift severity (0=none 1=low 2=medium 3=high)",
         registry=registry,
