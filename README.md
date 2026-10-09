@@ -127,7 +127,7 @@ This will:
 
 - **Current model card** — always-visible status strip showing the loaded model name, version, and stage. Updates instantly after a reload.
 - **Try the API** — send a prediction request with custom transaction features and see the fraud probability live.
-- **Full demos** — one-click end-to-end runs (`demo-drift-feature`, `demo-black-friday`). Each demo generates data → trains → promotes → monitors → triggers the control plane → reloads the API automatically.
+- **Full demos** — one-click end-to-end runs (`demo-drift-feature`, `demo-black-friday`, `demo-card-testing`). Each demo generates data → trains → promotes → monitors → triggers the control plane → reloads the API automatically.
 - **Pipeline steps** — run each stage individually in order:
 
 ```
@@ -278,6 +278,7 @@ make api-logs        # Tail API logs only
 make gen-base        # Generate reference dataset
 make gen-feature     # Generate feature drift current dataset
 make gen-blackfriday # Generate Black Friday shock current dataset
+make gen-card-testing # Generate card-testing attack current dataset
 
 # ML Pipeline
 make train           # Train model and register to MLflow
@@ -289,6 +290,7 @@ make reload-api      # Hot-reload Production model in the API
 # End-to-End Demos
 make demo-drift-feature   # Full pipeline: feature drift scenario
 make demo-black-friday    # Full pipeline: Black Friday shock scenario
+make demo-card-testing    # Full pipeline: card-testing attack scenario
 
 # Development (CI/CD)
 make setup-dev       # Install dev dependencies
@@ -301,6 +303,13 @@ make ci-local        # Simulate CI pipeline
 ```
 
 ---
+
+The `card_testing` shock simulates small payments used to test payment cards during
+hours 00–05. Its defaults scale transaction amounts to 5% (with a minimum of 1)
+and multiply fraud probabilities by 3 (capped at 1) within that window.
+The scenario keeps the configured row count and hour distribution; it does not
+simulate increased transaction volume. Adjust `spike_hours`, `amount_scale`, and
+`fraud_spike_multiplier` in `data/generator/config/shock_card_testing.yaml`.
 
 ## Development & CI/CD
 

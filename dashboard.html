@@ -298,6 +298,12 @@
       <button class="btn btn-run" onclick="runCmd('demo-black-friday', this)">▶ Run full demo</button>
     </div>
 
+    <div class="card demo-card">
+      <div class="demo-title">Card-Testing Attack</div>
+      <p class="demo-desc">Small card-testing payments with elevated fraud between midnight and 6 AM. Simulates an overnight attack against payment cards.</p>
+      <button class="btn btn-run" onclick="runCmd('demo-card-testing', this)">▶ Run full demo</button>
+    </div>
+
   </div>
 
   <!-- ── Pipeline flowchart ── -->
@@ -323,6 +329,7 @@
         <div class="pipe-btns">
           <button class="btn btn-run btn-sm" onclick="runCmd('gen-feature', this)" title="Gradual shift in amounts, distances, risk scores">▶ Feature drift</button>
           <button class="btn btn-run btn-sm" onclick="runCmd('gen-blackfriday', this)" title="Sudden late-night spike with elevated fraud multiplier">▶ Black Friday</button>
+          <button class="btn btn-run btn-sm" onclick="runCmd('gen-card-testing', this)" title="Small overnight payments with elevated fraud">▶ Card testing</button>
         </div>
       </div>
       <div class="pipe-ha">→</div>

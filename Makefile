@@ -7,9 +7,9 @@ export
 PROJECT_NAME := driftwatch
 
 .PHONY: help up down build logs api-logs \
-        gen-base gen-feature gen-blackfriday \
+        gen-base gen-feature gen-blackfriday gen-card-testing \
         train promote-prod monitor control reload-api rollback \
-        demo-drift-feature demo-black-friday \
+        demo-drift-feature demo-black-friday demo-card-testing \
         clean-shared \
         format lint test check ci-local \
         setup-dev install-hooks dashboard
@@ -25,6 +25,7 @@ help:
 	@echo "  gen-base           Generate reference dataset -> shared/data/reference.csv"
 	@echo "  gen-feature        Generate current dataset (feature drift) -> shared/data/current.csv"
 	@echo "  gen-blackfriday    Generate current dataset (shock) -> shared/data/current.csv"
+	@echo "  gen-card-testing  Generate current dataset (card-testing shock) -> shared/data/current.csv"
 	@echo ""
 	@echo "  train              Train + register model to MLflow"
 	@echo "  promote-prod       Promote latest model version to Production"
@@ -34,6 +35,7 @@ help:
 	@echo ""
 	@echo "  demo-drift-feature End-to-end demo: feature drift"
 	@echo "  demo-black-friday  End-to-end demo: shock event"
+	@echo "  demo-card-testing End-to-end demo: card-testing attack"
 	@echo ""
 	@echo "  clean-shared       Remove generated files in this project’s shared directory"
 	@echo ""
@@ -84,6 +86,10 @@ gen-blackfriday:
 	docker compose --profile jobs run --rm training \
 	  python -m data.generator.generate --config /app/data/generator/config/shock_black_friday.yaml --out /app/shared/data/current.csv
 
+gen-card-testing:
+	docker compose --profile jobs run --rm training \
+	  python -m data.generator.generate --config /app/data/generator/config/shock_card_testing.yaml --out /app/shared/data/current.csv
+
 # --- Jobs (docker) ---
 train:
 	docker compose --profile jobs run --rm training \
@@ -123,6 +129,15 @@ demo-black-friday:
 	$(MAKE) train
 	$(MAKE) promote-prod
 	$(MAKE) gen-blackfriday
+	$(MAKE) monitor
+	$(MAKE) control
+	$(MAKE) reload-api
+
+demo-card-testing:
+	$(MAKE) gen-base
+	$(MAKE) train
+	$(MAKE) promote-prod
+	$(MAKE) gen-card-testing
 	$(MAKE) monitor
 	$(MAKE) control
 	$(MAKE) reload-api
