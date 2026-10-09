@@ -72,6 +72,25 @@ class TestMetricsEndpoint:
         response = client_no_model.get("/metrics")
         assert "text/plain" in response.headers["content-type"]
 
+    def test_metrics_export_both_outcomes_before_any_predictions(self, client_no_model):
+        parser = pytest.importorskip("prometheus_client.parser")
+
+        samples = [
+            sample
+            for family in parser.text_string_to_metric_families(client_no_model.get("/metrics").text)
+            for sample in family.samples
+            if sample.name == "fraud_predictions_total"
+        ]
+        assert {sample.labels["result"] for sample in samples} == {"fraud", "legit"}
+
+    def test_model_readiness_follows_loaded_model(self, client_no_model, monkeypatch):
+        pytest.importorskip("prometheus_client.parser")
+        import services.api.main as api
+
+        assert "api_model_loaded 0.0" in client_no_model.get("/metrics").text
+        monkeypatch.setattr(api, "_model", MagicMock())
+        assert "api_model_loaded 1.0" in client_no_model.get("/metrics").text
+
 
 class TestPredictEndpointNoModel:
     def test_predict_without_model_returns_error(self, client_no_model: TestClient) -> None:

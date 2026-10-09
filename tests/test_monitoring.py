@@ -128,3 +128,30 @@ def test_target_drift_is_not_counted_as_feature_drift():
     assert result["severity"] == "none"
     assert result["total_features_checked"] == 7
     assert "is_fraud" not in per_feature
+
+
+def test_published_drift_metrics_match_report(monkeypatch):
+    pytest.importorskip("prometheus_client.parser")
+    from services.monitoring import run_monitoring
+
+    summary, features = compute_drift_severity(
+        _make_report(["transaction_amount"], ALL_FEATURES)
+    )
+    published = {}
+
+    def capture_push(url, job, registry):
+        assert job == "driftwatch_monitoring"
+        for family in registry.collect():
+            for sample in family.samples:
+                published[(sample.name, tuple(sorted(sample.labels.items())))] = sample.value
+
+    monkeypatch.setattr(run_monitoring, "push_to_gateway", capture_push)
+    run_monitoring.push_drift_metrics(summary, features, "http://unused")
+    assert published[("monitoring_total_features", ())] == 7
+    assert published[("monitoring_drifted_features", ())] == 1
+    assert published[("monitoring_drift_ratio", ())] == pytest.approx(1 / 7)
+    assert published[("monitoring_drift_severity", ())] == 1
+    for feature in ALL_FEATURES:
+        assert published[("monitoring_feature_drift", (("feature", feature),))] == (
+            1 if feature == "transaction_amount" else 0
+        )
