@@ -6,6 +6,10 @@ export
 
 PROJECT_NAME := driftwatch
 
+# Job images contain the source and configs. Refresh them before every run;
+# Docker reuses cached layers when nothing changed.
+RUN_JOB := docker compose --profile jobs run --build --rm
+
 .PHONY: help up down build logs api-logs \
         gen-base gen-feature gen-blackfriday gen-card-testing \
         train promote-prod monitor control reload-api rollback \
@@ -75,42 +79,42 @@ api-logs:
 
 # --- Data generation ---
 gen-base:
-	docker compose --profile jobs run --rm training \
+	$(RUN_JOB) training \
 	  python -m data.generator.generate --config /app/data/generator/config/base.yaml --out /app/shared/data/reference.csv
 
 gen-feature:
-	docker compose --profile jobs run --rm training \
+	$(RUN_JOB) training \
 	  python -m data.generator.generate --config /app/data/generator/config/drift_feature.yaml --out /app/shared/data/current.csv
 
 gen-blackfriday:
-	docker compose --profile jobs run --rm training \
+	$(RUN_JOB) training \
 	  python -m data.generator.generate --config /app/data/generator/config/shock_black_friday.yaml --out /app/shared/data/current.csv
 
 gen-card-testing:
-	docker compose --profile jobs run --rm training \
+	$(RUN_JOB) training \
 	  python -m data.generator.generate --config /app/data/generator/config/shock_card_testing.yaml --out /app/shared/data/current.csv
 
 # --- Jobs (docker) ---
 train:
-	docker compose --profile jobs run --rm training \
+	$(RUN_JOB) training \
 	  python /app/services/training/train.py --reference /app/shared/data/reference.csv
 
 promote-prod:
-	docker compose --profile jobs run --rm training \
+	$(RUN_JOB) training \
 	  python -c "from services.training.train import promote_latest_to_production; promote_latest_to_production()"
 
 monitor:
-	docker compose --profile jobs run --rm monitoring \
+	$(RUN_JOB) monitoring \
 	  python /app/services/monitoring/run_monitoring.py \
 	    --reference /app/shared/data/reference.csv \
 	    --current /app/shared/data/current.csv
 
 control:
-	docker compose --profile jobs run --rm control_plane \
+	$(RUN_JOB) control_plane \
 	  python /app/services/control_plane/runner.py
 
 rollback:
-	docker compose --profile jobs run --rm control_plane \
+	$(RUN_JOB) control_plane \
 	  python /app/services/control_plane/rollback.py
 	$(MAKE) reload-api
 

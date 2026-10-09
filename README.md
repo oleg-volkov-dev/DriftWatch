@@ -91,7 +91,7 @@ DriftWatch simulates a complete ML lifecycle where models monitor themselves and
 make up
 ```
 
-`make up` builds and starts all containers, then automatically opens the **DriftWatch dashboard** at `http://localhost:8765`. Everything else can be done from there.
+`make up` builds and starts the core services, then automatically opens the **DriftWatch dashboard** at `http://localhost:8765`. Everything else can be done from there. Data generation and pipeline commands build their job images before running, so updated code and scenario configs are included automatically. Unchanged Docker layers are reused.
 
 Direct service links:
 - **Dashboard**: http://localhost:8765
@@ -154,6 +154,25 @@ make demo-black-friday
 ```
 
 After either demo completes, try the predict form with `Hour = 22` and `Amount = 1500`. A retrained model replaces Production only if it passes the configured quality gates; a blocked release keeps the existing model and predictions.
+
+### Shock Event (Card Testing)
+Small overnight payments with elevated fraud probabilities during hours 00–05.
+```bash
+make demo-card-testing
+```
+
+With the default config, monitoring detects drift in transaction amounts (one of
+seven features), giving `low` severity. The default policy records the result and
+skips retraining (`noop`); the demo still finishes and reloads the baseline model.
+
+To apply the attack after an existing demo without training and promoting a fresh
+baseline, run:
+```bash
+make gen-card-testing
+make monitor
+make control
+make reload-api
+```
 
 ---
 
