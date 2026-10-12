@@ -37,6 +37,7 @@ SHOCK_DEFAULTS = {
         "spike_hours": [0, 1, 2, 3, 4, 5],
         "amount_scale": 0.05,
         "fraud_spike_multiplier": 3.0,
+        "affected_fraction": 0.5,
     },
 }
 
@@ -93,6 +94,9 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
     intl_rate = drift.get("international_rate")
     if intl_rate is not None and not 0 <= float(intl_rate) <= 1:
         raise ValueError("international_rate must be between 0 and 1")
+    affected_fraction = float(drift.get("affected_fraction", 1.0))
+    if not np.isfinite(affected_fraction) or not 0 <= affected_fraction <= 1:
+        raise ValueError("affected_fraction must be between 0 and 1")
     spike_hours = drift.get("spike_hours", [20, 21, 22, 23])
     if any(not isinstance(h, int) or not 0 <= h <= 23 for h in spike_hours):
         raise ValueError("spike_hours must contain integers from 0 to 23")
@@ -147,8 +151,12 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
     # Time-window shocks: shopping surges or small card-testing transactions.
     if is_shock:
         is_spike = np.isin(transaction_hour, spike_hours)
+        # Keep ordinary traffic in the attack window so hour alone does not
+        # identify an attack. A separate RNG preserves unaffected rows/labels.
+        shock_rng = np.random.default_rng(np.random.SeedSequence([seed, 1]))
+        is_affected = is_spike & (shock_rng.random(n) < affected_fraction)
         amount_scale = float(drift.get("amount_scale", 2.0))
-        transaction_amount = transaction_amount * np.where(is_spike, amount_scale, 1.0)
+        transaction_amount = transaction_amount * np.where(is_affected, amount_scale, 1.0)
         transaction_amount = np.clip(transaction_amount, 1, 15000)
 
         risk_shift = float(drift.get("merchant_risk_shift", 0.0))
@@ -166,7 +174,8 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
             amount_scale=amount_scale,
             merchant_risk_shift=risk_shift,
             international_rate=intl_rate,
-            affected_transactions=int(is_spike.sum()),
+            affected_fraction=affected_fraction,
+            affected_transactions=int(is_affected.sum()),
         )
 
     # Trying to estimate how suspicious the transaction, adding some noise as well.
@@ -193,7 +202,7 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
 
     if is_shock:
         prob = np.clip(
-            prob * np.where(is_spike, float(drift.get("fraud_spike_multiplier", 1.2)), 1.0),
+            prob * np.where(is_affected, float(drift.get("fraud_spike_multiplier", 1.2)), 1.0),
             0,
             1,
         )

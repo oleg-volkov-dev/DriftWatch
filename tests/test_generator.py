@@ -155,13 +155,17 @@ class TestGenerateDfShock:
             {**cfg, "drift": {"type": "shock", "shock_name": "card_testing"}}
         )
         overnight = attacked["transaction_hour"].isin(range(6))
-        assert attacked.loc[overnight, "transaction_amount"].median() < 5
+        changed = attacked["transaction_amount"] != baseline["transaction_amount"]
+        assert (changed & overnight).any()
+        assert (overnight & ~changed).any()
+        assert changed.sum() / overnight.sum() == pytest.approx(0.5, abs=0.03)
+        assert attacked.loc[changed, "transaction_amount"].median() < 5
         assert (
-            attacked.loc[overnight, "is_fraud"].mean()
-            > baseline.loc[overnight, "is_fraud"].mean() + 0.3
+            attacked.loc[changed, "is_fraud"].mean()
+            > baseline.loc[changed, "is_fraud"].mean() + 0.3
         )
         pd.testing.assert_frame_equal(
-            attacked.loc[~overnight], baseline.loc[~overnight]
+            attacked.loc[~changed], baseline.loc[~changed]
         )
 
     @pytest.mark.parametrize("shock_name", ["black_friday", "card_testing"])
@@ -175,6 +179,7 @@ class TestGenerateDfShock:
                 "spike_hours": [12, 13],
                 "amount_scale": 1.0,
                 "fraud_spike_multiplier": 0.0,
+                "affected_fraction": 1.0,
             },
         })
         window = attacked["transaction_hour"].isin([12, 13])
@@ -259,6 +264,8 @@ def test_invalid_row_count_has_clear_error(rows):
         {"type": "feature", "distance_scale": float("nan")},
         {"type": "shock", "shock_name": "black_friday", "international_rate": 1.5},
         {"type": "shock", "shock_name": "black_friday", "spike_hours": [24]},
+        {"type": "shock", "shock_name": "card_testing", "affected_fraction": 1.1},
+        {"type": "shock", "shock_name": "card_testing", "affected_fraction": float("nan")},
     ],
 )
 def test_invalid_drift_configuration_is_rejected(drift):
@@ -294,3 +301,19 @@ def test_negative_new_account_weight_is_rejected():
         generate_df({
             **BASE_CFG, "fraud_logic": {**BASE_CFG["fraud_logic"], "new_account_weight": -1}
         })
+
+
+@pytest.mark.parametrize("fraction", [0.0, 1.0])
+def test_shock_affected_fraction_controls_which_transactions_change(fraction):
+    baseline = generate_df(BASE_CFG)
+    current = generate_df({
+        **BASE_CFG,
+        "drift": {"type": "shock", "shock_name": "card_testing", "affected_fraction": fraction},
+    })
+    if fraction == 0:
+        pd.testing.assert_frame_equal(current, baseline)
+    else:
+        overnight = baseline["transaction_hour"] <= 5
+        assert (current.loc[overnight, "transaction_amount"] <
+                baseline.loc[overnight, "transaction_amount"]).all()
+        pd.testing.assert_frame_equal(current.loc[~overnight], baseline.loc[~overnight])

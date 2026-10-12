@@ -8,6 +8,8 @@ drift:
   spike_hours: [0, 1, 2, 3, 4, 5]
   amount_scale: 0.05
   fraud_spike_multiplier: 3.0
+  # Preserve normal overnight traffic so the model can distinguish small attacks.
+  affected_fraction: 0.5
 
 fraud_logic:
   international_weight: 1.2

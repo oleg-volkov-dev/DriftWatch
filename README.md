@@ -189,7 +189,9 @@ make demo-black-friday
 After either demo completes, try the predict form with `Hour = 22` and `Amount = 1500`. A retrained model replaces Production only if it passes the configured quality gates; a blocked release keeps the existing model and predictions.
 
 ### Shock Event (Card Testing)
-Small overnight payments with elevated fraud probabilities during hours 00–05.
+Small overnight payments with elevated fraud probabilities during hours 00–05,
+mixed with ordinary overnight traffic. By default half of transactions in this
+window are selected for the attack.
 ```bash
 make demo-card-testing
 ```
@@ -199,6 +201,10 @@ seven features), giving `low` feature-drift severity. Amount is a configured
 critical feature, so the combined incident severity is at least `medium` and the
 control plane evaluates retraining. Outcome and model-quality changes can raise
 additional alerts. A replacement still has to pass the release quality gates.
+The mixed-traffic scenario is harder than replacing every overnight payment with
+an attack. With the supplied seed/config, its candidate AUC is about 0.764, below
+the 0.82 gate, so the demo keeps its freshly trained baseline model. This is a
+blocked promotion, not a failed reload; inspect `shared/events/release_result.json`.
 
 To apply the attack after an existing demo without training and promoting a fresh
 baseline, run:
@@ -227,13 +233,17 @@ feature. These are demo assumptions, not empirically established fraud rules.
 
 High amounts use a fixed threshold of $150 and distance risk uses
 `min(geo_distance_km / 200, 1)`. These scales do not change with batch composition.
-Training transforms tenure using the same decay and encodes each hour separately,
-so it can learn elevated risk at both ends of the night. The dashboard displays
-probabilities to one decimal place.
+Training uses the same bounded amount/distance signals and tenure decay, and
+encodes each hour separately. A small-payment/overnight interaction (amount <= $10,
+hour 00–05) lets it learn attack patterns without assigning the same extra risk to
+every overnight purchase. The dashboard displays probabilities to one decimal
+place. The default form (2 AM, merchant risk 0.6, $150, 500 km) is intentionally
+risky; try noon, $50, merchant risk 0.1, 10 km, and tenure 730 days for a lower-risk
+comparison. Very high scores can still be appropriate for attack-like inputs.
 
 Generator or preprocessing edits require new data and a newly trained model.
 For existing installations, rebuild the API first so it contains the new tenure
-transform, then run a demo to regenerate data, train, promote the baseline, and
+transforms, then run a demo to regenerate data, train, promote the baseline, and
 reload:
 
 ```bash
@@ -427,11 +437,16 @@ make ci-local        # Simulate CI pipeline
 ---
 
 The `card_testing` shock simulates small payments used to test payment cards during
-hours 00–05. Its defaults scale transaction amounts to 5% (with a minimum of 1)
-and multiply fraud probabilities by 3 (capped at 1) within that window.
+hours 00–05. Its defaults randomly select half of transactions in this window,
+scale their amounts to 5% (with a minimum of 1), and multiply their fraud
+probabilities by 3 (capped at 1). The other transactions retain their base features
+and labels. This avoids teaching the model that every overnight transaction is
+part of the attack.
 The scenario keeps the configured row count and hour distribution; it does not
-simulate increased transaction volume. Adjust `spike_hours`, `amount_scale`, and
-`fraud_spike_multiplier` in `data/generator/config/shock_card_testing.yaml`.
+simulate increased transaction volume. Adjust `spike_hours`, `amount_scale`,
+`fraud_spike_multiplier`, and `affected_fraction` in
+`data/generator/config/shock_card_testing.yaml`. An `affected_fraction` of 1 restores
+the all-overnight attack; 0 disables its amount and fraud-probability changes.
 
 ## Development & CI/CD
 

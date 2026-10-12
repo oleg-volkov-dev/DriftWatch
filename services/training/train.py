@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
-from services.common.features import new_account_risk
+from services.common.features import amount_distance_risk, new_account_risk, small_overnight_payment
 from services.common.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -71,7 +71,15 @@ def build_pipeline() -> Pipeline:
             (
                 "num",
                 StandardScaler(),
-                [f for f in FEATURES_NUM if f not in {"transaction_hour", "account_tenure_days"}],
+                ["customer_age", "merchant_risk_score"],
+            ),
+            (
+                "amount_distance", FunctionTransformer(amount_distance_risk),
+                ["transaction_amount", "geo_distance_km"],
+            ),
+            (
+                "small_overnight", FunctionTransformer(small_overnight_payment),
+                ["transaction_amount", "transaction_hour"],
             ),
             ("hour", OneHotEncoder(categories=[list(range(24))]), ["transaction_hour"]),
             ("tenure", FunctionTransformer(new_account_risk), ["account_tenure_days"]),

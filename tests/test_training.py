@@ -281,3 +281,42 @@ def test_trained_model_learns_tenure_and_both_ends_of_night(tmp_path):
     probabilities = pipe.predict_proba(probe)[:, 1]
     assert probabilities[0] > probabilities[1] + 0.05
     assert probabilities[2] > probabilities[3] + 0.05
+
+
+@pytest.mark.parametrize("seed", [42, 73, 123])
+def test_card_testing_model_distinguishes_attack_from_normal_payments(seed):
+    import yaml
+    from sklearn.model_selection import train_test_split
+
+    from data.generator.generate import generate_df
+
+    cfg = yaml.safe_load(
+        (Path(__file__).parents[1] / "data/generator/config/shock_card_testing.yaml").read_text()
+    )
+    cfg["seed"] = seed
+    data = generate_df(cfg)
+    train, _ = train_test_split(data, test_size=0.2, stratify=data[LABEL], random_state=42)
+    pipe = build_pipeline().fit(train.drop(columns=[LABEL]), train[LABEL])
+    normal = dict(transaction_amount=50.0, transaction_hour=12, customer_age=35,
+                  account_tenure_days=730, merchant_risk_score=0.1, geo_distance_km=10.0,
+                  is_international=False)
+    probe = pd.DataFrame([
+        normal,
+        {**normal, "transaction_hour": 2},
+        {**normal, "transaction_hour": 2, "transaction_amount": 3.0},
+        {**normal, "transaction_amount": 3.0},
+        dict(normal, transaction_amount=150.0, transaction_hour=2, account_tenure_days=180,
+             merchant_risk_score=0.6, geo_distance_km=500.0),
+    ])
+    day, night, attack, small_day, old_dashboard_defaults = pipe.predict_proba(probe)[:, 1]
+    assert day < 0.35
+    assert night < 0.5
+    assert attack > night + 0.3
+    assert small_day < 0.35
+    assert old_dashboard_defaults < 0.97
+    # Inputs far outside the training range must respect the bounded synthetic
+    # amount/distance effects, rather than extrapolating toward certainty.
+    extreme = probe.iloc[[-1]].copy()
+    extreme["transaction_amount"] = 1e6
+    extreme["geo_distance_km"] = 1e6
+    assert pipe.predict_proba(extreme)[0, 1] == pytest.approx(old_dashboard_defaults)
