@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 from sklearn.pipeline import Pipeline
@@ -244,3 +245,39 @@ def test_load_csv_normalizes_boolean_strings(tmp_path):
     path = tmp_path / "strings.csv"
     df.to_csv(path, index=False)
     assert load_csv(str(path))["is_fraud"].tolist() == SAMPLE_DATA["is_fraud"]
+
+
+def test_trained_model_learns_tenure_and_both_ends_of_night(tmp_path):
+    import joblib
+    import yaml
+
+    from data.generator.generate import generate_df
+
+    cfg = yaml.safe_load(
+        (Path(__file__).parents[1] / "data/generator/config/base.yaml").read_text()
+    )
+    cfg["n_rows"] = 20000
+    data = generate_df(cfg)
+    pipe = build_pipeline().fit(data.drop(columns=[LABEL]), data[LABEL])
+    probe = pd.DataFrame({
+        "transaction_amount": [100.0] * 4,
+        "transaction_hour": [12] * 4,
+        "customer_age": [35] * 4,
+        "account_tenure_days": [1, 180, 730, 3650],
+        "merchant_risk_score": [0.3] * 4,
+        "geo_distance_km": [30.0] * 4,
+        "is_international": [False] * 4,
+    })
+    probabilities = pipe.predict_proba(probe)[:, 1]
+    assert np.all(np.diff(probabilities) < 0)
+    assert probabilities[0] - probabilities[-1] > 0.1
+    assert probabilities[2] - probabilities[3] < 0.02
+    # The preprocessing function must survive model persistence for API serving.
+    path = tmp_path / "model.joblib"
+    joblib.dump(pipe, path)
+    np.testing.assert_allclose(joblib.load(path).predict_proba(probe)[:, 1], probabilities)
+    probe["account_tenure_days"] = 180
+    probe["transaction_hour"] = [2, 12, 22, 14]
+    probabilities = pipe.predict_proba(probe)[:, 1]
+    assert probabilities[0] > probabilities[1] + 0.05
+    assert probabilities[2] > probabilities[3] + 0.05

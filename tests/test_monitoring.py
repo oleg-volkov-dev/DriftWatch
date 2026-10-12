@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
-from services.monitoring.run_monitoring import compute_drift_severity
+from services.monitoring.run_monitoring import compute_drift_severity, select_features
 
 
 def _make_report(drifted_cols: list[str], all_cols: list[str]) -> dict:
@@ -32,21 +33,15 @@ ALL_FEATURES = [
 
 
 class TestComputeDriftSeverityNoMetrics:
-    def test_empty_report_returns_none_severity(self) -> None:
-        result, _ = compute_drift_severity({})
-
-        assert result["severity"] == "none"
-        assert result["drift_ratio"] == 0.0
-        assert result["drifted_features"] == 0
-        assert result["total_features_checked"] == 0
+    def test_empty_report_is_not_reported_as_no_drift(self) -> None:
+        with pytest.raises(ValueError, match="no feature results"):
+            compute_drift_severity({})
 
     def test_no_data_drift_table_metric(self) -> None:
         report = {"metrics": [{"metric": "SomeOtherMetric", "result": {}}]}
 
-        result, _ = compute_drift_severity(report)
-
-        assert result["severity"] == "none"
-        assert result["drift_ratio"] == 0.0
+        with pytest.raises(ValueError, match="no feature results"):
+            compute_drift_severity(report)
 
 
 class TestComputeDriftSeverityThresholds:
@@ -128,6 +123,33 @@ def test_target_drift_is_not_counted_as_feature_drift():
     assert result["severity"] == "none"
     assert result["total_features_checked"] == 7
     assert "is_fraud" not in per_feature
+
+
+def test_missing_detection_result_is_not_reported_as_stable():
+    report = _make_report([], ALL_FEATURES)
+    del report["metrics"][0]["result"]["drift_by_columns"]["transaction_amount"]["drift_detected"]
+    with pytest.raises(ValueError, match="Invalid or duplicate"):
+        compute_drift_severity(report)
+
+
+def test_monitoring_excludes_labels_and_metadata():
+    data = pd.DataFrame({f: [1.0, 2.0] for f in ALL_FEATURES})
+    data["is_fraud"] = [True, False]
+    data["transaction_id"] = ["a", "b"]
+    assert select_features(data).columns.tolist() == ALL_FEATURES
+
+
+def test_monitoring_rejects_missing_feature():
+    with pytest.raises(ValueError, match="missing required features"):
+        select_features(pd.DataFrame({"transaction_amount": [1.0]}))
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_monitoring_rejects_nonfinite_feature(value):
+    data = pd.DataFrame({f: [1.0] for f in ALL_FEATURES})
+    data.loc[0, "account_tenure_days"] = value
+    with pytest.raises(ValueError, match="finite"):
+        select_features(data)
 
 
 def test_published_drift_metrics_match_report(monkeypatch):

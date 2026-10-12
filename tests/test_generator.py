@@ -161,7 +161,7 @@ class TestGenerateDfShock:
             > baseline.loc[overnight, "is_fraud"].mean() + 0.3
         )
         pd.testing.assert_frame_equal(
-            attacked.loc[~overnight, FEATURES], baseline.loc[~overnight, FEATURES]
+            attacked.loc[~overnight], baseline.loc[~overnight]
         )
 
     @pytest.mark.parametrize("shock_name", ["black_friday", "card_testing"])
@@ -264,3 +264,33 @@ def test_invalid_row_count_has_clear_error(rows):
 def test_invalid_drift_configuration_is_rejected(drift):
     with pytest.raises(ValueError):
         generate_df({**BASE_CFG, "drift": drift})
+
+
+@pytest.mark.parametrize("scale", ["amount_scale", "distance_scale"])
+def test_feature_scaling_increases_fraud_without_changing_other_features(scale):
+    cfg = {**BASE_CFG, "n_rows": 20000}
+    base = generate_df(cfg)
+    shifted = generate_df({**cfg, "drift": {"type": "feature", scale: 3.0}})
+    # Fixed risk scales must not cancel out a population-wide increase.
+    assert shifted["is_fraud"].mean() > base["is_fraud"].mean() + 0.02
+
+
+def test_new_account_risk_increases_fraud_most_for_young_accounts():
+    cfg = {**BASE_CFG, "n_rows": 30000}
+    neutral = generate_df(cfg)
+    weighted = generate_df({
+        **cfg, "fraud_logic": {**cfg["fraud_logic"], "new_account_weight": 1.2}
+    })
+    pd.testing.assert_frame_equal(neutral[FEATURES], weighted[FEATURES])
+    young = neutral["account_tenure_days"] < 90
+    mature = neutral["account_tenure_days"] > 730
+    delta = weighted["is_fraud"].astype(int) - neutral["is_fraud"].astype(int)
+    assert delta[young].mean() > 0.15
+    assert 0 <= delta[mature].mean() < 0.02
+
+
+def test_negative_new_account_weight_is_rejected():
+    with pytest.raises(ValueError, match="new_account_weight"):
+        generate_df({
+            **BASE_CFG, "fraud_logic": {**BASE_CFG["fraud_logic"], "new_account_weight": -1}
+        })
