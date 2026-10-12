@@ -177,3 +177,62 @@ def test_published_drift_metrics_match_report(monkeypatch):
         assert published[("monitoring_feature_drift", (("feature", feature),))] == (
             1 if feature == "transaction_amount" else 0
         )
+
+
+def test_quality_export_omits_undefined_metrics_and_marks_unavailability(monkeypatch):
+    pytest.importorskip("prometheus_client.parser")
+    from services.monitoring import run_monitoring
+    from services.monitoring.quality import monitoring_policy
+    from tests.test_quality import transactions
+
+    reference = transactions()
+    current = reference.drop(columns="is_fraud")
+    summary, features = compute_drift_severity(_make_report(["transaction_amount"], ALL_FEATURES))
+    summary = run_monitoring.add_quality_signals(
+        summary, features, reference, current, None, monitoring_policy({})
+    )
+    samples = []
+
+    def capture(url, job, registry):
+        samples.extend(s for family in registry.collect() for s in family.samples)
+
+    monkeypatch.setattr(run_monitoring, "push_to_gateway", capture)
+    run_monitoring.push_drift_metrics(summary, features, "http://unused")
+    assert next(s.value for s in samples if s.name == "monitoring_incident_severity") == 2
+    assert next(s.value for s in samples if s.name == "monitoring_alert_count") == 1
+    assert all(s.value == 0 for s in samples if s.name == "monitoring_quality_available")
+    assert not any(s.name == "monitoring_quality" and s.labels["window"] == "current"
+                   for s in samples)
+    assert any(s.name == "monitoring_quality" and s.labels["metric"] == "fraud_rate"
+               for s in samples)
+
+
+def test_model_loading_pins_production_version(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from services.monitoring import run_monitoring
+
+    client = MagicMock()
+    client.get_latest_versions.return_value = [SimpleNamespace(version="17")]
+    monkeypatch.setattr(run_monitoring, "MlflowClient", lambda: client)
+    loader = MagicMock()
+    monkeypatch.setattr(run_monitoring.mlflow.sklearn, "load_model", loader)
+    monkeypatch.setenv("MODEL_NAME", "test_fraud")
+    model, info = run_monitoring.load_production_model()
+    loader.assert_called_once_with("models:/test_fraud/17")
+    assert model is loader.return_value
+    assert info["version"] == "17"
+
+
+def test_missing_production_model_is_explicit(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from services.monitoring import run_monitoring
+
+    client = MagicMock()
+    client.get_latest_versions.return_value = []
+    monkeypatch.setattr(run_monitoring, "MlflowClient", lambda: client)
+    assert run_monitoring.load_production_model() == (
+        None, {"status": "unavailable", "reason": "no_production_model"}
+    )

@@ -64,6 +64,11 @@ def test_local_model_lifecycle(tmp_path, monkeypatch):
     summary = json.loads((tmp_path / "monitoring_summary.json").read_text())
     assert summary["total_features_checked"] == 7
     assert summary["severity"] in {"medium", "high"}
+    assert summary["model"]["status"] == "available"
+    assert summary["model"]["version"] == "1"
+    assert summary["quality"]["current"]["overall"]["status"] == "available"
+    assert summary["quality"]["current"]["overall"]["metrics"]["brier_score"] >= 0
+    assert any(a["kind"] == "critical_feature" for a in summary["alerts"])
 
     # Permissive gates exercise promotion; production gate rejection is tested separately.
     policy = tmp_path / "policy.yaml"
@@ -85,3 +90,35 @@ def test_local_model_lifecycle(tmp_path, monkeypatch):
         assert client.post("/reload").status_code == 200
         assert client.get("/health").json()["version"] == "1"
     assert not (tmp_path / "rollback_manifest.json").exists()
+
+
+@pytest.mark.parametrize("scenario", ["card_testing", "label_only"])
+def test_quality_alerts_with_real_drift_detection(scenario, tmp_path, promotion_policy_path):
+    from evidently.metric_preset import DataDriftPreset
+    from evidently.report import Report
+
+    from data.generator.generate import FEATURES, generate_df
+    from services.control_plane.agents.planner import plan
+    from services.control_plane.agents.sentinel import run_sentinel
+    from services.monitoring.quality import monitoring_policy
+    from services.monitoring.run_monitoring import add_quality_signals, compute_drift_severity
+    from services.training.train import build_pipeline
+
+    cfg = yaml.safe_load(open("data/generator/config/base.yaml"))
+    reference = generate_df(cfg)
+    model = build_pipeline().fit(reference[FEATURES], reference.is_fraud)
+    if scenario == "card_testing":
+        current = generate_df(yaml.safe_load(open("data/generator/config/shock_card_testing.yaml")))
+    else:
+        current = reference.copy()
+        current["is_fraud"] = ~current["is_fraud"]
+    report = Report(metrics=[DataDriftPreset()])
+    report.run(reference_data=reference[FEATURES], current_data=current[FEATURES])
+    summary, features = compute_drift_severity(report.as_dict())
+    assert summary["drifted_features"] == (1 if scenario == "card_testing" else 0)
+    summary = add_quality_signals(summary, features, reference, current, model, monitoring_policy({}))
+    assert summary["incident_severity"] == "medium"
+    assert any(a["kind"] == "model_quality" for a in summary["alerts"])
+    assert any(a.get("scope", "").startswith("hour_") for a in summary["alerts"])
+    (tmp_path / "monitoring_summary.json").write_text(json.dumps(summary, allow_nan=False))
+    assert plan(run_sentinel(str(tmp_path)), promotion_policy_path).action == "retrain_and_evaluate"
