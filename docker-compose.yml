@@ -72,9 +72,11 @@ services:
       - DATA_DIR=/app/shared/data
       - REPORT_DIR=/app/shared/reports
       - PUSHGATEWAY_URL=http://pushgateway:9091
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      - MODEL_NAME=${MODEL_NAME:-fraud_detector}
     volumes:
       - ./shared:/app/shared
-    depends_on: [pushgateway]
+    depends_on: [pushgateway, mlflow]
     networks: [openml]
     profiles: ["jobs"]
 

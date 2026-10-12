@@ -154,8 +154,8 @@ Open [DriftWatch — API & Drift](http://localhost:3000/d/driftwatch-fraud-api).
 - **Offline drift** shows the latest successfully published monitoring result at
   the selected end time. Check the result age and gateway health: batch values
   persist between runs. Severity measures the fraction of input features that
-  drifted, excluding `is_fraud`. None/Low skips retraining under the default policy;
-  Medium/High triggers evaluation, with promotion subject to quality gates.
+  drifted, excluding `is_fraud`. Critical-feature and model-quality alerts can
+  trigger evaluation even when this ratio is low. Promotion still requires quality gates.
 - **Health indicators** distinguish API reachability, a loaded model, and gateway
   reachability. Missing metrics are not treated as healthy zero values.
 
@@ -195,8 +195,10 @@ make demo-card-testing
 ```
 
 With the default config, monitoring detects drift in transaction amounts (one of
-seven features), giving `low` severity. The default policy records the result and
-skips retraining (`noop`); the demo still finishes and reloads the baseline model.
+seven features), giving `low` feature-drift severity. Amount is a configured
+critical feature, so the combined incident severity is at least `medium` and the
+control plane evaluates retraining. Outcome and model-quality changes can raise
+additional alerts. A replacement still has to pass the release quality gates.
 
 To apply the attack after an existing demo without training and promoting a fresh
 baseline, run:
@@ -239,14 +241,57 @@ docker compose up -d --build api
 make demo-drift-feature
 ```
 
-See [the logic review](docs/LOGIC_REVIEW.md) for measured scenario results and
-remaining monitoring and release-policy limitations.
-
 ### 2. Drift Detection
 Evidently analyzes reference vs current data:
 - Calculates drift ratio (% of features drifted)
 - Classifies severity: none/low/medium/high
 - Generates HTML report + JSON summary
+
+Monitoring also loads the registered Production model once, pins its version,
+and evaluates that same model on reference and current data. The JSON summary
+includes precision and recall at the API's 0.5 threshold, ROC AUC, average
+precision, Brier score, log loss, ten-bin calibration error and reliability-bin
+data, plus observed fraud prevalence. Metrics are calculated overall and by
+transaction hour. Feature-drift HTML remains a separate distribution report.
+
+The `monitoring_policy` section of `services/control_plane/policies/promotion.yaml`
+controls critical features, minimum label counts, and alert thresholds. Defaults:
+
+- Drift in amount, merchant risk, or international status raises an alert even
+  when only one feature changes.
+- At least 100 observed labels are required in **each** compared window, both
+  overall and for each hourly slice. Below this, metrics are marked unavailable.
+- Precision/recall drops over 0.10, AUC drops over 0.05, Brier/calibration-error
+  increases over 0.05, or absolute fraud-rate changes over 0.10 raise alerts.
+  These are absolute changes (0.10 means ten percentage points), not relative
+  percentages. They are demo thresholds, not statistical significance tests.
+
+`severity` continues to describe feature drift alone; `incident_severity` also
+accounts for critical-feature, outcome, and model-quality alerts. Any alert raises
+the incident to at least medium. Sentinel passes this severity to the existing
+policy-driven planner; retraining never bypasses release gates. If current labels
+are incomplete or contain only one class, the planner records `await_labels`.
+
+The label column is optional and may contain missing values for delayed labels.
+Only labelled rows contribute to outcome/quality metrics, and label coverage is
+reported. Undefined metrics (such as recall without positives) are `null`, not
+healthy zeros. An unavailable model is explicitly reported; feature and observed
+outcome monitoring still run. Invalid labels or model probabilities fail the job.
+
+These comparisons monitor the registered Production model, which may differ from
+an API instance that has not reloaded. Reference data reused from training can
+give optimistic reference metrics; use independent labelled reference/current
+windows for meaningful quality evaluation. Partial labels can also be biased.
+Candidate-versus-incumbent release evaluation is a separate concern.
+
+Prometheus exports `monitoring_incident_severity`, `monitoring_alert_count`,
+per-alert `monitoring_alert`, `monitoring_quality{window,scope,metric}`,
+`monitoring_quality_available`, `monitoring_label_coverage`, and
+`monitoring_labeled_rows`. Scope is `overall` or `hour_0` through `hour_23`.
+Undefined metric series are omitted, and each push replaces the previous batch.
+Grafana's labelled-outcomes section shows combined severity, active alerts,
+quality availability, label coverage, overall quality, probability errors, and
+recall by hour. Check the result-age panel because these are batch observations.
 
 ### 3. Control Plane Execution
 
@@ -389,6 +434,11 @@ simulate increased transaction volume. Adjust `spike_hours`, `amount_scale`, and
 `fraud_spike_multiplier` in `data/generator/config/shock_card_testing.yaml`.
 
 ## Development & CI/CD
+
+Keep personal notes and scratch output in `.local/` (ignored by Git). Generated
+datasets/reports, model artifacts, caches, coverage files, local environment
+files, and assistant state are excluded from commits and Docker build contexts.
+Source, tests, CI configuration, and reusable project documentation belong in Git.
 
 This project uses automated quality checks and testing:
 

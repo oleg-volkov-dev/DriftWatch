@@ -122,6 +122,8 @@ def cases():
                 ("monitoring_drift_severity", "1+0x20"),
                 ("monitoring_drifted_features", "1+0x20"),
                 ("monitoring_total_features", "7+0x20"),
+                ("monitoring_incident_severity", "2+0x20"),
+                ("monitoring_alert_count", "1+0x20"),
                 ("push_time_seconds", "120+0x20"),
             ]
         ],
@@ -131,6 +133,38 @@ def cases():
             check(16, 1, 'monitoring_drifted_features{job="driftwatch_monitoring"}'),
             check(16, 7, 'monitoring_total_features{job="driftwatch_monitoring"}', target=1),
             check(21, 180),
+            check(25, 2, 'monitoring_incident_severity{job="driftwatch_monitoring"}'),
+            check(26, 1, 'monitoring_alert_count{job="driftwatch_monitoring"}'),
+        ],
+    })
+    labels = 'job="driftwatch_monitoring",window="current",scope="overall"'
+    tests.append({
+        "name": "Delayed labels expose unavailability, not healthy zero quality",
+        "interval": "15s",
+        "input_series": [
+            series("monitoring_quality_available", "0+0x20", labels),
+            series("monitoring_label_coverage", "0.25+0x20", labels),
+        ],
+        "promql_expr_test": [
+            check(27, 0, "monitoring_quality_available{" + labels + "}"),
+            check(28, 0.25, "monitoring_label_coverage{" + labels + "}"),
+            check(29), check(30), check(31),
+        ],
+    })
+    tests.append({
+        "name": "Quality queries separate ranking, calibration, and hourly slices",
+        "interval": "15s",
+        "input_series": [
+            series("monitoring_quality", "0.8+0x20", labels + ',metric="recall"'),
+            series("monitoring_quality", "0.2+0x20", labels + ',metric="brier_score"'),
+            series("monitoring_quality", "0.1+0x20", labels.replace('overall', 'hour_2') + ',metric="recall"'),
+            series("monitoring_alert", "1+0x20", 'job="driftwatch_monitoring",kind="model_quality",scope="hour_2",signal="recall"'),
+        ],
+        "promql_expr_test": [
+            check(29, .8, 'monitoring_quality{' + labels + ',metric="recall"}'),
+            check(30, .2, 'monitoring_quality{' + labels + ',metric="brier_score"}'),
+            check(31, .1, 'monitoring_quality{' + labels.replace('overall', 'hour_2') + ',metric="recall"}'),
+            check(32, 1, 'monitoring_alert{job="driftwatch_monitoring",kind="model_quality",scope="hour_2",signal="recall"}'),
         ],
     })
     return {"evaluation_interval": "15s", "tests": tests}

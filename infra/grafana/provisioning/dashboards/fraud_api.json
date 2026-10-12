@@ -1,6 +1,6 @@
 {
   "uid": "driftwatch-fraud-api",
-  "title": "DriftWatch — API & Drift",
+  "title": "DriftWatch \u2014 API & Drift",
   "tags": [
     "driftwatch"
   ],
@@ -571,7 +571,7 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Model execution time — estimated percentiles",
+      "title": "Model execution time \u2014 estimated percentiles",
       "gridPos": {
         "x": 12,
         "y": 11,
@@ -640,7 +640,7 @@
     {
       "id": 7,
       "type": "row",
-      "title": "Online model predictions — not confirmed fraud",
+      "title": "Online model predictions \u2014 not confirmed fraud",
       "gridPos": {
         "x": 0,
         "y": 19,
@@ -875,7 +875,7 @@
     {
       "id": 12,
       "type": "timeseries",
-      "title": "Predicted scores — estimated percentiles",
+      "title": "Predicted scores \u2014 estimated percentiles",
       "gridPos": {
         "x": 12,
         "y": 24,
@@ -957,7 +957,7 @@
     {
       "id": 13,
       "type": "row",
-      "title": "Offline drift — latest published batch",
+      "title": "Offline drift \u2014 latest published batch",
       "gridPos": {
         "x": 0,
         "y": 32,
@@ -1112,7 +1112,7 @@
           "range": false
         }
       ],
-      "description": "Latest successfully pushed offline analysis at the selected end time. Values persist between runs; check monitoring result age and Pushgateway health. None: 0%; Low: >0% and <20%; Medium: >=20% and <50%; High: >=50%. The default policy skips retraining for None/Low and evaluates retraining for Medium/High; promotion still requires quality gates."
+      "description": "Feature-distribution severity only: None=0%, Low<20%, Medium>=20%, High>=50%. Critical-feature and model-quality alerts can raise combined incident severity even when feature drift is low. Promotion still requires release gates."
     },
     {
       "id": 16,
@@ -1344,7 +1344,532 @@
         }
       ],
       "description": "Published batch severity held between monitoring runs. A flat line does not imply continuous analysis. Missing data is not treated as zero."
+    },
+    {
+      "id": 24,
+      "type": "row",
+      "title": "Labelled outcomes and model quality \u2014 latest batch",
+      "gridPos": {
+        "x": 0,
+        "y": 54,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 25,
+      "type": "gauge",
+      "title": "Combined incident severity",
+      "gridPos": {
+        "x": 0,
+        "y": 55,
+        "w": 6,
+        "h": 6
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "short",
+          "min": 0,
+          "max": 3,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "None"
+                },
+                "1": {
+                  "text": "Low"
+                },
+                "2": {
+                  "text": "Medium"
+                },
+                "3": {
+                  "text": "High"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          },
+          "noValue": "No monitoring result"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "monitoring_incident_severity{job=\"driftwatch_monitoring\"}",
+          "legendFormat": "Incident",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Includes feature breadth, critical-feature alerts, and observed outcome/model-quality changes. Medium/High requests evaluation under the default policy, pending complete training labels. Check result age above."
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "Active monitoring alerts",
+      "gridPos": {
+        "x": 6,
+        "y": 55,
+        "w": 6,
+        "h": 6
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No monitoring result",
+          "decimals": 0,
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "monitoring_alert_count{job=\"driftwatch_monitoring\"}",
+          "legendFormat": "Alerts",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Number of alerts in the latest batch. Multiple metrics can flag the same incident; this is not a count of distinct fraud events."
+    },
+    {
+      "id": 27,
+      "type": "stat",
+      "title": "Current quality available",
+      "gridPos": {
+        "x": 12,
+        "y": 55,
+        "w": 6,
+        "h": 6
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "Unavailable",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Unavailable",
+                  "color": "orange"
+                },
+                "1": {
+                  "text": "Available",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "monitoring_quality_available{job=\"driftwatch_monitoring\",window=\"current\",scope=\"overall\"}",
+          "legendFormat": "Available",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "1 means enough observed labels and an evaluated model. Individual metrics can still be undefined, e.g. AUC for one class. Zero means insufficient labels or no loaded model; missing means no published result."
+    },
+    {
+      "id": 28,
+      "type": "stat",
+      "title": "Current label coverage",
+      "gridPos": {
+        "x": 18,
+        "y": 55,
+        "w": 6,
+        "h": 6
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No monitoring result",
+          "decimals": 0,
+          "min": 0,
+          "max": 1,
+          "mappings": []
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "monitoring_label_coverage{job=\"driftwatch_monitoring\",window=\"current\",scope=\"overall\"}",
+          "legendFormat": "Coverage",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Observed labels divided by all current rows. Partial labels can be biased. Quality metrics use labelled rows only, and retraining waits for complete labels and both classes."
+    },
+    {
+      "id": 29,
+      "type": "bargauge",
+      "title": "Current precision, recall and ranking",
+      "gridPos": {
+        "x": 0,
+        "y": 61,
+        "w": 12,
+        "h": 7
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "Unavailable"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "monitoring_quality{job=\"driftwatch_monitoring\",window=\"current\",scope=\"overall\",metric=~\"precision|recall|auc|average_precision\"}",
+          "legendFormat": "{{metric}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Latest batch metrics at the API threshold of 0.5. Higher is better. AUC/AP require both classes; precision requires flagged predictions; recall requires positives. Undefined metrics are omitted."
+    },
+    {
+      "id": 30,
+      "type": "bargauge",
+      "title": "Current probability errors",
+      "gridPos": {
+        "x": 12,
+        "y": 61,
+        "w": 12,
+        "h": 7
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "Unavailable"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "monitoring_quality{job=\"driftwatch_monitoring\",window=\"current\",scope=\"overall\",metric=~\"brier_score|calibration_error\"}",
+          "legendFormat": "{{metric}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Lower is better. Calibration error uses ten equal-width probability bins; Brier score is mean squared probability error. These are descriptive batch estimates, not significance tests."
+    },
+    {
+      "id": 31,
+      "type": "bargauge",
+      "title": "Recall by transaction hour",
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 12,
+        "h": 8
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "Unavailable"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "monitoring_quality{job=\"driftwatch_monitoring\",window=\"current\",scope=~\"hour_[0-9]+\",metric=\"recall\"}",
+          "legendFormat": "{{scope}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Each hour needs the configured minimum observed labels. Missing bars mean insufficient data or undefined recall, not zero. Hourly alerts compare against that same hour in the reference batch."
+    },
+    {
+      "id": 32,
+      "type": "bargauge",
+      "title": "Active alert details",
+      "gridPos": {
+        "x": 12,
+        "y": 68,
+        "w": 12,
+        "h": 8
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "No active alerts"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "monitoring_alert{job=\"driftwatch_monitoring\"}",
+          "legendFormat": "{{kind}} / {{scope}} / {{signal}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Each bar identifies an active alert from the latest batch. Empty means no active alerts or no monitoring result; consult the alert-count and result-age panels. JSON summaries include values and configured thresholds."
     }
   ],
-  "description": "Online inference activity and the latest offline drift analysis. API statistics use the selected time range; batch metrics retain the last successful monitoring result. Predictions are model decisions, not confirmed fraud."
+  "description": "Online inference activity and the latest offline drift analysis. API statistics use the selected time range; batch metrics retain the last successful monitoring result. Predictions are model decisions, not confirmed fraud.",
+  "version": 1
 }

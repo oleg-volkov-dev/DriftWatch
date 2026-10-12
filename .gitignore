@@ -11,9 +11,11 @@ venv/
 # Testing & Coverage
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 .tox/
 coverage.xml
+junit.xml
 *.cover
 
 # Linting & Type Checking
@@ -42,6 +44,19 @@ docker-compose.override.yml
 
 # Env
 .env
+.env.*
+!.env.example
 
 # AI artifacts
 .claude/
+.codex/
+.agents/
+.aws/
+
+# Local notes, scratch work, and generated review reports
+.local/
+docs/LOGIC_REVIEW.md
+
+# Python build output
+build/
+dist/
