@@ -58,6 +58,16 @@ def plan(report: SentinelReport, policy_path: str) -> ExecutionPlan:
     else:
         action = drift_policy.get("on_high", {}).get("action", "retrain_and_evaluate")
 
+    # Monitoring can alert before delayed labels have arrived. Do not train on
+    # missing labels or silently substitute the old reference data.
+    current_quality = report.evidence.get("quality", {}).get("current", {})
+    if action == "retrain_and_evaluate" and current_quality.get("can_retrain") is False:
+        return ExecutionPlan(
+            action="await_labels",
+            notes="Incident detected; current data needs complete labels and both classes.",
+            policy=policy,
+        )
+
     logger.info(
         "Execution plan created",
         action=action,

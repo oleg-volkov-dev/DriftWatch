@@ -2,6 +2,21 @@ quality_gates:
   min_auc: 0.82
   min_average_precision: 0.20
 
+# Absolute metric changes versus the same Production model on reference data.
+# Alerts trigger evaluation; they do not bypass release quality gates.
+monitoring_policy:
+  critical_features: [transaction_amount, merchant_risk_score, is_international]
+  min_labeled_rows: 100
+  min_hour_labeled_rows: 100
+  max_metric_drop:
+    precision: 0.10
+    recall: 0.10
+    auc: 0.05
+  max_metric_increase:
+    brier_score: 0.05
+    calibration_error: 0.05
+  max_fraud_rate_change: 0.10
+
 drift_policy:
   on_none:
     action: noop

@@ -37,6 +37,13 @@ def run_sentinel(report_dir: str = "/app/shared/reports") -> SentinelReport:
     if severity not in {"none", "low", "medium", "high"}:
         raise ValueError(f"Unknown drift severity: {severity}")
 
+    alerts = summary.get("alerts", [])
+    if alerts and severity in {"none", "low"}:
+        severity = "medium"
+    incident_type = "model_quality" if any(
+        a.get("kind") in {"model_quality", "outcome_shift"} for a in alerts
+    ) else "drift"
+
     if severity in ("none", "low"):
         logger.info("No actionable incidents detected", severity=severity)
         return SentinelReport(
@@ -48,7 +55,7 @@ def run_sentinel(report_dir: str = "/app/shared/reports") -> SentinelReport:
 
     logger.warning(
         "Incident detected",
-        incident_type="drift",
+        incident_type=incident_type,
         severity=severity,
         drift_ratio=summary.get("drift_ratio"),
         drifted_features=summary.get("drifted_features"),
@@ -56,7 +63,7 @@ def run_sentinel(report_dir: str = "/app/shared/reports") -> SentinelReport:
     )
 
     return SentinelReport(
-        incident_type="drift",
+        incident_type=incident_type,
         severity=severity,
         recommended_action="retrain_and_evaluate",
         evidence=summary,
