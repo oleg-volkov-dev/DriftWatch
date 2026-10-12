@@ -288,13 +288,13 @@
 
     <div class="card demo-card">
       <div class="demo-title">Feature Drift</div>
-      <p class="demo-desc">Gradual shift in transaction distributions — amounts, distances, and risk scores scale over time. Runs: gen-base → train → promote → gen-feature → monitor → control → reload.</p>
+      <p class="demo-desc">A shifted batch with higher amounts, distances, and merchant risk scores. Runs: gen-base → train → promote → gen-feature → monitor → control → reload.</p>
       <button class="btn btn-run" onclick="runCmd('demo-drift-feature', this)">▶ Run full demo</button>
     </div>
 
     <div class="card demo-card">
       <div class="demo-title">Black Friday Shock</div>
-      <p class="demo-desc">Sudden spike event — late-night transaction surge with an elevated fraud multiplier. Simulates a one-off shock rather than gradual drift.</p>
+      <p class="demo-desc">Larger late-evening payments with elevated fraud, merchant risk, and international activity. Transaction hours stay uniformly distributed.</p>
       <button class="btn btn-run" onclick="runCmd('demo-black-friday', this)">▶ Run full demo</button>
     </div>
 
@@ -478,7 +478,7 @@
         return;
       }
 
-      const pct  = Math.round(data.fraud_probability * 100);
+      const pct  = (data.fraud_probability * 100).toFixed(1);
       const fraud = data.is_fraud;
 
       // Color: green → yellow → red

@@ -11,6 +11,7 @@ import pandas as pd
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from services.common.features import DISTANCE_SCALE_KM, HIGH_AMOUNT_THRESHOLD, new_account_risk
 from services.common.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -48,6 +49,7 @@ class FraudLogic:
     merchant_risk_weight: float
     distance_weight: float
     noise: float
+    new_account_weight: float = 0.0
 
 
 # Convert any number to value between 0 and 1 (get probability from the score)
@@ -97,6 +99,8 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
     logic = FraudLogic(**cfg.get("fraud_logic", {}))
     if not all(np.isfinite(v) for v in logic.__dict__.values()) or logic.noise < 0:
         raise ValueError("Fraud logic must be finite and noise must be nonnegative")
+    if logic.new_account_weight < 0:
+        raise ValueError("new_account_weight must be nonnegative")
 
     logger.info(
         "Starting data generation",
@@ -167,15 +171,17 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
 
     # Trying to estimate how suspicious the transaction, adding some noise as well.
     night = (transaction_hour <= 5) | (transaction_hour >= 22)
-    high_amount = transaction_amount >= np.quantile(transaction_amount, 0.90)
+    # Fixed scales preserve P(fraud | features) when feature distributions change.
+    high_amount = transaction_amount >= HIGH_AMOUNT_THRESHOLD
 
     score = (
         logic.international_weight * is_international.astype(float)
         + logic.night_weight * night.astype(float)
         + logic.high_amount_weight * high_amount.astype(float)
         + logic.merchant_risk_weight * merchant_risk_score
+        + logic.new_account_weight * new_account_risk(account_tenure_days)
         + logic.distance_weight
-        * (geo_distance_km / (geo_distance_km.max() + 1e-9))  # adding 1e-9 to prevent division by 0
+        * np.clip(geo_distance_km / DISTANCE_SCALE_KM, 0, 1)
     )
 
     # Gaussian noise, so transactions with identical features won't always get the same label

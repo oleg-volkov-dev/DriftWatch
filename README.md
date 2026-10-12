@@ -170,13 +170,18 @@ actual queries against Prometheus fixtures; CI runs this check too.
 ## Demo Scenarios
 
 ### Feature Drift
-Transaction amounts and distances shift significantly — the model learns different scale relationships.
+Transaction amounts, distances, and merchant risk scores shift in one batch. The
+fraud rule stays fixed: this is a change in input distributions, not a change in
+what makes a given transaction risky. It does not simulate a gradual time series.
 ```bash
 make demo-drift-feature
 ```
 
 ### Shock Event (Black Friday)
-Sudden late-night spike in transaction volume with elevated fraud rates. The retrained model weights night hours and high amounts more heavily.
+Larger payments during hours 20–23, higher merchant risk and international activity,
+and a fraud multiplier in that window. The configured dataset is larger than the
+baseline, but hours remain uniformly distributed; there is no within-window volume
+surge. This scenario changes both feature distributions and the fraud rule.
 ```bash
 make demo-black-friday
 ```
@@ -211,6 +216,31 @@ Deterministic fraud dataset with configurable drift:
 - **Features**: transaction_amount, customer_age, merchant_risk, geo_distance, etc.
 - **Drift Types**: Feature distribution shifts, shock events
 - **Config-driven**: YAML files control drift parameters
+
+New accounts have extra synthetic risk of
+`new_account_weight * exp(-account_tenure_days / 180)` in the fraud score.
+The supplied scenarios use weight `1.2`; set it to `0` to make tenure neutral.
+Omitting it in a custom config also defaults to `0`. Customer age remains a neutral
+feature. These are demo assumptions, not empirically established fraud rules.
+
+High amounts use a fixed threshold of $150 and distance risk uses
+`min(geo_distance_km / 200, 1)`. These scales do not change with batch composition.
+Training transforms tenure using the same decay and encodes each hour separately,
+so it can learn elevated risk at both ends of the night. The dashboard displays
+probabilities to one decimal place.
+
+Generator or preprocessing edits require new data and a newly trained model.
+For existing installations, rebuild the API first so it contains the new tenure
+transform, then run a demo to regenerate data, train, promote the baseline, and
+reload:
+
+```bash
+docker compose up -d --build api
+make demo-drift-feature
+```
+
+See [the logic review](docs/LOGIC_REVIEW.md) for measured scenario results and
+remaining monitoring and release-policy limitations.
 
 ### 2. Drift Detection
 Evidently analyzes reference vs current data:

@@ -13,8 +13,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
+from services.common.features import new_account_risk
 from services.common.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -67,7 +68,13 @@ def load_csv(path: str) -> pd.DataFrame:
 def build_pipeline() -> Pipeline:
     pre = ColumnTransformer(
         transformers=[
-            ("num", StandardScaler(), FEATURES_NUM),
+            (
+                "num",
+                StandardScaler(),
+                [f for f in FEATURES_NUM if f not in {"transaction_hour", "account_tenure_days"}],
+            ),
+            ("hour", OneHotEncoder(categories=[list(range(24))]), ["transaction_hour"]),
+            ("tenure", FunctionTransformer(new_account_risk), ["account_tenure_days"]),
             ("bool", OneHotEncoder(handle_unknown="ignore"), FEATURES_BOOL),
         ],
         remainder="drop",

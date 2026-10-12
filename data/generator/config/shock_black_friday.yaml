@@ -16,4 +16,5 @@ fraud_logic:
   high_amount_weight: 1.2
   merchant_risk_weight: 1.2
   distance_weight: 0.5
+  new_account_weight: 1.2
   noise: 0.22

@@ -5,11 +5,13 @@ import json
 import os
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from evidently.metric_preset import DataDriftPreset
 from evidently.report import Report
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
+from data.generator.generate import FEATURES
 from services.common.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -29,12 +31,16 @@ def compute_drift_severity(report_dict: dict) -> tuple[dict, dict]:
             for feature, v in table.items():
                 if feature == "is_fraud":
                     continue
+                if feature in per_feature or not isinstance(v.get("drift_detected"), bool):
+                    raise ValueError(f"Invalid or duplicate drift result for {feature}")
                 total += 1
                 detected = 1 if v.get("drift_detected") is True else 0
                 per_feature[feature] = detected
                 drifted += detected
 
-    drift_ratio = (drifted / total) if total else 0.0
+    if not total:
+        raise ValueError("Drift report contains no feature results")
+    drift_ratio = drifted / total
 
     severity = "none"
     if drift_ratio >= 0.50:
@@ -51,6 +57,17 @@ def compute_drift_severity(report_dict: dict) -> tuple[dict, dict]:
         "severity": severity,
     }
     return summary, per_feature
+
+
+def select_features(data: pd.DataFrame) -> pd.DataFrame:
+    """Keep the drift denominator fixed and reject incomplete monitoring data."""
+    missing = set(FEATURES) - set(data.columns)
+    if missing:
+        raise ValueError(f"Monitoring data missing required features: {sorted(missing)}")
+    features = data[FEATURES]
+    if not np.isfinite(features.to_numpy(dtype=float)).all():
+        raise ValueError("Monitoring features must contain finite values")
+    return features
 
 
 def push_drift_metrics(summary: dict, per_feature: dict[str, int], pushgateway_url: str) -> None:
@@ -114,8 +131,8 @@ def main() -> None:
     logger.info("Running Evidently drift analysis")
     report = Report(metrics=[DataDriftPreset()])
     report.run(
-        reference_data=ref.drop(columns=["is_fraud"], errors="ignore"),
-        current_data=cur.drop(columns=["is_fraud"], errors="ignore"),
+        reference_data=select_features(ref),
+        current_data=select_features(cur),
     )
 
     out_dir = Path(args.report_dir)
