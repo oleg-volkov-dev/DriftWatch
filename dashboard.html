@@ -142,26 +142,51 @@
     .btn-run.running { border-color: #ca8a04; background: #1c1400; color: #fbbf24; }
     .btn-run.ok { border-color: #166534; background: #042012; color: #4ade80; }
 
-    /* ── Terminal panel ── */
+    /* ── Run progress and optional technical output ── */
     #terminal-panel {
       display: none; flex-direction: column;
-      width: 400px; flex-shrink: 0;
+      width: 350px; flex-shrink: 0;
       position: sticky; top: 24px;
       max-height: calc(100vh - 48px);
+      background: #161b27; border: 1px solid #2d3348; border-radius: 10px;
+      overflow-y: auto;
     }
-    .term-header { display: flex; align-items: center; justify-content: space-between; background: #161b27; border: 1px solid #2d3348; border-bottom: none; border-radius: 8px 8px 0 0; padding: 8px 14px; }
-    .term-title  { font-size: 0.73rem; font-weight: 600; color: #64748b; font-family: "SF Mono", monospace; }
+    .term-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px; }
+    .term-title  { font-size: 0.86rem; font-weight: 600; color: #e2e8f0; }
     .term-close  { font-size: 0.73rem; color: #475569; background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
     .term-close:hover { background: #2d3348; color: #94a3b8; }
+    #run-steps { list-style: none; padding: 0 16px; }
+    .run-step { display: flex; gap: 10px; padding: 12px 0; border-top: 1px solid #252c3d; color: #64748b; }
+    .step-icon { display: grid; place-items: center; width: 23px; height: 23px; flex-shrink: 0; border: 1px solid #334155; border-radius: 50%; font-size: 0.7rem; }
+    .step-label { font-size: 0.8rem; font-weight: 500; line-height: 23px; }
+    .step-detail { font-size: 0.73rem; line-height: 1.5; color: #94a3b8; margin-top: 3px; }
+    .run-step.running { color: #c7d2fe; }
+    .run-step.running .step-icon { border-color: #818cf8; background: #1e1b4b; }
+    .run-step.done { color: #cbd5e1; }
+    .run-step.done .step-icon { color: #4ade80; border-color: #166534; }
+    .run-step.failed .step-icon { color: #f87171; border-color: #7f1d1d; }
+    .run-step.unknown .step-icon { color: #fbbf24; border-color: #78350f; }
+    #run-summary { margin: 4px 16px 16px; padding: 12px; background: #0f1117; border-radius: 6px; color: #94a3b8; font-size: 0.76rem; line-height: 1.5; }
+    #run-summary.success { color: #4ade80; }
+    #run-summary.notice { color: #fbbf24; }
+    #run-summary.err { color: #f87171; }
+    #technical-log { border-top: 1px solid #2d3348; }
+    #technical-log summary { padding: 12px 16px; font-size: 0.74rem; color: #94a3b8; cursor: pointer; }
+    #technical-log summary:hover { color: #e2e8f0; }
     #terminal-output {
-      background: #0a0d14; border: 1px solid #2d3348; border-radius: 0 0 8px 8px;
+      background: #0a0d14; border-top: 1px solid #2d3348;
       padding: 14px 16px; font-family: "SF Mono", "Fira Code", monospace; font-size: 0.74rem;
-      line-height: 1.6; color: #94a3b8; flex: 1; overflow-y: auto;
+      line-height: 1.6; color: #94a3b8; max-height: 280px; overflow-y: auto;
       white-space: pre-wrap; word-break: break-all;
     }
     #terminal-output .prompt  { color: #6366f1; font-weight: 700; }
     #terminal-output .success { color: #22c55e; font-weight: 600; }
     #terminal-output .err     { color: #f87171; font-weight: 600; }
+    @media (max-width: 1050px) {
+      #layout { flex-direction: column; }
+      #main { width: 100%; }
+      #terminal-panel { width: 100%; position: static; max-height: none; order: -1; }
+    }
   </style>
 </head>
 <body>
@@ -225,6 +250,7 @@
   <div id="model-status-card" class="model-status-card">
     <div id="model-dot" class="model-dot"></div>
     <div id="model-status-text" class="model-status-text">Checking model…</div>
+    <button id="activity-toggle" class="btn btn-reload" hidden style="font-size:0.72rem;padding:4px 10px" onclick="showTerminal()">Activity</button>
     <button class="btn btn-reload" style="font-size:0.72rem;padding:4px 10px" onclick="reloadModel(this)">Reload</button>
   </div>
 
@@ -386,17 +412,123 @@
 
 </div><!-- /main -->
 
-<!-- ── Terminal panel (right side) ── -->
-<div id="terminal-panel">
+<!-- ── Human-readable progress; technical output is collapsed by default ── -->
+<aside id="terminal-panel" aria-label="Run activity">
   <div class="term-header">
-    <span class="term-title" id="term-title">output</span>
-    <button class="term-close" onclick="closeTerminal()">✕ close</button>
+    <span class="term-title" id="term-title">Run activity</span>
+    <button class="term-close" onclick="closeTerminal()" aria-label="Hide run activity">✕</button>
   </div>
-  <div id="terminal-output"></div>
-</div>
+  <ol id="run-steps"></ol>
+  <p id="run-summary" role="status" aria-live="polite" aria-atomic="true"></p>
+  <details id="technical-log">
+    <summary>Technical output</summary>
+    <div id="terminal-output" aria-label="Full command output"></div>
+  </details>
+</aside>
 
 </div><!-- /layout -->
 
+<script id="progress-logic">
+  // Reduce known lifecycle messages to a few steps. Unrecognised output stays
+  // in the technical log; it must never imply that a model was deployed.
+  const cleanOutput = text => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+  class RunProgress {
+    constructor(command) {
+      const scenarios = {
+        'demo-drift-feature': 'Feature drift', 'demo-black-friday': 'Black Friday',
+        'demo-card-testing': 'Card testing',
+      };
+      const labels = {
+        'gen-base': 'Prepare baseline data', 'gen-feature': 'Create feature-drift data',
+        'gen-blackfriday': 'Create Black Friday data', 'gen-card-testing': 'Create card-testing data',
+        train: 'Train model', 'promote-prod': 'Publish model', monitor: 'Check drift and quality',
+        control: 'Evaluate a replacement', rollback: 'Restore previous model', 'reload-api': 'Reload model',
+      };
+      this.title = scenarios[command] || labels[command] || 'Run activity';
+      const demo = command in scenarios;
+      this.steps = (demo ? [
+        ['base', 'Prepare baseline data'], ['train', 'Train baseline'],
+        ['promote', 'Publish baseline'], ['current', 'Create scenario data'],
+        ['monitor', 'Check drift and quality'], ['control', 'Evaluate a replacement'],
+        ['reload', 'Reload model'],
+      ] : [[command === 'gen-base' ? 'base' : command.startsWith('gen-') ? 'current'
+        : command === 'promote-prod' ? 'promote' : command === 'reload-api' ? 'reload'
+        : command, this.title]]).map(([id, label]) => ({id, label, state: 'pending', detail: ''}));
+      this.active = 0;
+      this.steps[0].state = 'running';
+      this.outcome = '';
+      this.result = '';
+      this.resultClass = '';
+    }
+    stage(id, detail = '') {
+      const index = this.steps.findIndex(step => step.id === id);
+      if (index < this.active || index < 0) return;
+      for (let i = this.active; i < index; i++) this.steps[i].state = 'done';
+      this.active = index;
+      this.steps[index].state = 'running';
+      this.steps[index].detail = detail;
+    }
+    line(raw) {
+      const line = cleanOutput(raw);
+      if (/Loading configuration/.test(line)) {
+        this.stage(line.includes('/base.yaml') ? 'base' : 'current');
+      } else if (line.includes('Starting training pipeline')) {
+        this.stage(this.steps[this.active].id === 'control' ? 'control' : 'train', 'Training…');
+      } else if (line.includes('Promoting latest model to Production')) {
+        this.stage('promote');
+      } else if (line.includes('Starting drift detection')) {
+        this.stage('monitor', 'Comparing data and model quality…');
+      } else if (line.includes('Control plane orchestrator starting')) {
+        this.stage('control', 'Reviewing alerts…');
+      } else if (line.includes('Phase 3: Executing retraining')) {
+        this.stage('control', 'Training a candidate model…');
+      } else if (line.includes('Phase 4: Release evaluation')) {
+        this.stage('control', 'Checking release requirements…');
+      } else if (line.includes('Quality gates failed - promotion blocked')) {
+        this.outcome = 'Candidate did not pass checks. Current model kept.';
+      } else if (line.includes('Control plane cycle complete - promotion blocked')) {
+        this.outcome ||= 'Candidate was not promoted. Current model kept.';
+      } else if (line.includes('Control plane cycle complete - no action taken')) {
+        this.outcome = line.includes('await_labels')
+          ? 'Waiting for labels. Current model kept.' : 'No replacement requested. Current model kept.';
+      } else if (line.includes('Control plane cycle complete - model promoted')) {
+        this.outcome = /stage=['"]?Production\b/.test(line)
+          ? 'Replacement model published.' : 'Candidate staged. Production model unchanged.';
+      } else if (line.includes('Reloading model in API container')) {
+        this.stage('reload', 'Loading the Production model…');
+      }
+      const step = this.steps[this.active];
+      if (step.id === 'control' && this.outcome) step.detail = this.outcome;
+      if (line.includes('Dataset saved') && ['base', 'current'].includes(step.id)) {
+        step.state = 'done'; step.detail = 'Data ready.';
+      } else if (line.includes('Training pipeline complete') && step.id === 'train') {
+        step.state = 'done'; step.detail = 'Model trained.';
+      } else if (line.includes('Model promoted successfully') && step.id === 'promote') {
+        step.state = 'done'; step.detail = 'Model published.';
+      } else if (line.includes('Reports saved') && step.id === 'monitor') {
+        step.state = 'done'; step.detail = 'Analysis ready.';
+      } else if (line.includes('Model reloaded:') && step.id === 'reload') {
+        step.state = 'done'; step.detail = 'Production model loaded.';
+      }
+    }
+    finish(code) {
+      if (code === 0) {
+        this.steps.forEach(step => step.state = 'done');
+        this.result = this.outcome || 'Finished.';
+        this.resultClass = this.outcome && this.outcome !== 'Replacement model published.' ? 'notice' : 'success';
+      } else {
+        this.steps[this.active].state = 'failed';
+        this.result = 'Run stopped. Open technical output for details.';
+        this.resultClass = 'err';
+      }
+    }
+    disconnected(message = 'Connection lost. The run may still be continuing.') {
+      this.steps[this.active].state = 'unknown';
+      this.result = message;
+      this.resultClass = 'notice';
+    }
+  }
+</script>
 <script>
   // ── Status polling ────────────────────────────────────────────────────────
   function updateStatus() {
@@ -547,12 +679,48 @@
 
   // ── Demo runner ───────────────────────────────────────────────────────────
   let activeBtn = null;
+  let runProgress = null;
+
+  function renderProgress() {
+    const list = document.getElementById('run-steps');
+    list.replaceChildren();
+    for (const [index, step] of runProgress.steps.entries()) {
+      const row = document.createElement('li');
+      row.className = 'run-step ' + step.state;
+      row.setAttribute('aria-label', `${step.label}: ${step.state}`);
+      if (step.state === 'running') row.setAttribute('aria-current', 'step');
+      const icon = document.createElement('span');
+      icon.className = 'step-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = {done: '✓', running: '…', failed: '×', unknown: '?'}[step.state] || index + 1;
+      const content = document.createElement('div');
+      const label = document.createElement('div');
+      label.className = 'step-label';
+      label.textContent = step.label;
+      content.appendChild(label);
+      if (step.detail && (step.state !== 'done' || (!runProgress.result && step.id === 'control'))) {
+        const detail = document.createElement('div');
+        detail.className = 'step-detail';
+        detail.textContent = step.detail;
+        content.appendChild(detail);
+      }
+      row.append(icon, content);
+      list.appendChild(row);
+    }
+    const summary = document.getElementById('run-summary');
+    summary.className = runProgress.resultClass;
+    summary.textContent = runProgress.result || `Step ${runProgress.active + 1} of ${runProgress.steps.length} · In progress`;
+  }
+
+  function showTerminal() {
+    document.getElementById('terminal-panel').style.display = 'flex';
+  }
 
   function addLine(text, cls) {
     const out = document.getElementById('terminal-output');
     const div = document.createElement('div');
     if (cls) div.className = cls;
-    div.textContent = text;
+    div.textContent = cleanOutput(text);
     out.appendChild(div);
     out.scrollTop = out.scrollHeight;
   }
@@ -560,16 +728,19 @@
   function closeTerminal() {
     const panel = document.getElementById('terminal-panel');
     panel.style.display = 'none';
-    document.getElementById('terminal-output').innerHTML = '';
   }
 
   async function runCmd(cmd, btn) {
-    const panel = document.getElementById('terminal-panel');
+    if (activeBtn) return;
     const title = document.getElementById('term-title');
 
     document.getElementById('terminal-output').innerHTML = '';
-    panel.style.display = 'flex';
-    title.textContent  = '$ make ' + cmd;
+    document.getElementById('technical-log').open = false;
+    document.getElementById('activity-toggle').hidden = false;
+    runProgress = new RunProgress(cmd);
+    title.textContent = runProgress.title;
+    renderProgress();
+    showTerminal();
 
     document.querySelectorAll('.btn-run').forEach(b => b.disabled = true);
     if (activeBtn) { activeBtn.textContent = activeBtn.dataset.label || '▶ Run'; activeBtn.classList.remove('running'); }
@@ -581,9 +752,17 @@
     addLine('$ make ' + cmd, 'prompt');
 
     let exitCode = null;
+    let requestRejected = false;
     try {
       const resp = await fetch('/api/run/' + cmd, {method: 'POST'});
-      if (!resp.ok) throw new Error(await resp.text());
+      if (!resp.ok) {
+        requestRejected = true;
+        runProgress.finish(1);
+        runProgress.result = resp.status === 409
+          ? 'Not started. Another run is already in progress.'
+          : 'Could not start this run. Open technical output for details.';
+        throw new Error(await resp.text());
+      }
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -598,11 +777,18 @@
           for (const line of event.split('\n')) {
             if (!line.startsWith('data: ')) continue;
             const data = JSON.parse(line.slice(6));
-            if ('line' in data) addLine(data.line);
+            if ('line' in data) {
+              addLine(data.line);
+              const before = JSON.stringify(runProgress);
+              runProgress.line(data.line);
+              if (JSON.stringify(runProgress) !== before) renderProgress();
+            }
             if ('exit' in data) {
               exitCode = data.exit;
               const ok = exitCode === 0;
               addLine(ok ? '✓ Done' : `✗ Exited with code ${exitCode}`, ok ? 'success' : 'err');
+              runProgress.finish(exitCode);
+              renderProgress();
             }
           }
         }
@@ -610,6 +796,8 @@
       if (exitCode === null) throw new Error('Command stream ended before reporting a result');
     } catch(e) {
       addLine('Error: ' + e.message, 'err');
+      if (exitCode === null && !requestRejected) runProgress.disconnected();
+      renderProgress();
     } finally {
       document.querySelectorAll('.btn-run').forEach(b => b.disabled = false);
       btn.textContent = btn.dataset.label || '▶ Run';

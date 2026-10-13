@@ -135,7 +135,11 @@ This will:
 [5 Monitor]       → [6 Control]     → [7 Reload]
 ```
 
-All commands stream live output in a side panel. The model status card updates after every reload so you can see the version change in real time.
+Commands show a compact step-by-step progress panel. The final status explicitly
+states when a candidate is rejected and the current model is kept. Full logs are
+available under **Technical output**, collapsed by default. Hide the panel and
+reopen it with **Activity** without losing the running log. The model status card
+updates after every reload so you can see the version change in real time.
 
 ### Grafana metrics
 
