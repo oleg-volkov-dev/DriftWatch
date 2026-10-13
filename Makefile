@@ -149,7 +149,7 @@ demo-card-testing:
 
 reload-api:
 	@echo "Reloading model in API container..."
-	@curl -sf -X POST http://localhost:8000/reload | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\"  Model reloaded: {d['model']} (stage: {d['stage']})\")" \
+	@curl -sf -X POST http://localhost:8000/reload | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\"  Model reloaded: {d['model']} v{d['version']} (stage: {d['stage']})\")" \
 	  || { echo "  Failed to reload API model (is the API running?)"; exit 1; }
 
 # --- Utilities ---

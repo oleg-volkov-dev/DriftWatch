@@ -442,23 +442,49 @@
         'gen-base': 'Prepare baseline data', 'gen-feature': 'Create feature-drift data',
         'gen-blackfriday': 'Create Black Friday data', 'gen-card-testing': 'Create card-testing data',
         train: 'Train model', 'promote-prod': 'Publish model', monitor: 'Check drift and quality',
-        control: 'Evaluate a replacement', rollback: 'Restore previous model', 'reload-api': 'Reload model',
+        control: 'Evaluate a replacement', rollback: 'Restore previous model', 'reload-api': 'Load Production model into API',
       };
       this.title = scenarios[command] || labels[command] || 'Run activity';
       const demo = command in scenarios;
+      this.demo = demo;
       this.steps = (demo ? [
         ['base', 'Prepare baseline data'], ['train', 'Train baseline'],
-        ['promote', 'Publish baseline'], ['current', 'Create scenario data'],
+        ['promote', 'Put baseline in Production'], ['current', 'Create scenario data'],
         ['monitor', 'Check drift and quality'], ['control', 'Evaluate a replacement'],
-        ['reload', 'Reload model'],
+        ['reload', 'Load Production model into API'],
       ] : [[command === 'gen-base' ? 'base' : command.startsWith('gen-') ? 'current'
         : command === 'promote-prod' ? 'promote' : command === 'reload-api' ? 'reload'
         : command, this.title]]).map(([id, label]) => ({id, label, state: 'pending', detail: ''}));
       this.active = 0;
       this.steps[0].state = 'running';
       this.outcome = '';
+      this.decision = '';
+      this.baselinePublished = false;
+      this.baselineVersion = '';
+      this.candidateVersion = '';
+      this.productionVersion = '';
+      this.servingVersion = '';
       this.result = '';
       this.resultClass = '';
+    }
+    modelName(name, version) {
+      return version ? `${name} v${version}` : name;
+    }
+    decide(decision) {
+      this.decision = decision;
+      const candidate = this.modelName('Candidate', this.candidateVersion);
+      const baseline = this.modelName('Baseline', this.baselineVersion);
+      const retained = this.baselinePublished
+        ? `${baseline} remains in Production.` : 'Production was not changed.';
+      this.outcome = {
+        rejected: `${candidate} did not pass checks. ${retained}`,
+        blocked: `${candidate} was not promoted. ${retained}`,
+        waiting: `Waiting for labels. ${retained}`,
+        noop: `No replacement requested. ${retained}`,
+        promoted: `${candidate} is now in Production.` + (this.baselinePublished
+          ? ` It replaces ${this.modelName('baseline', this.baselineVersion)}.` : ''),
+        staged: `${candidate} staged. ${retained}`,
+      }[decision];
     }
     stage(id, detail = '') {
       const index = this.steps.findIndex(step => step.id === id);
@@ -470,6 +496,13 @@
     }
     line(raw) {
       const line = cleanOutput(raw);
+      const version = line.match(/(?:^|\s)version=['"]?(\d+)/)?.[1] || '';
+      const registered = line.match(/Created version ['"](\d+)['"] of model/)?.[1];
+      if (registered && this.steps[this.active].id === 'control') this.candidateVersion = registered;
+      if (line.includes('Model promoted successfully') && this.steps[this.active].id === 'control') {
+        this.candidateVersion = version || this.candidateVersion;
+        if (/stage=['"]?Production\b/.test(line)) this.productionVersion = this.candidateVersion;
+      }
       if (/Loading configuration/.test(line)) {
         this.stage(line.includes('/base.yaml') ? 'base' : 'current');
       } else if (line.includes('Starting training pipeline')) {
@@ -485,15 +518,13 @@
       } else if (line.includes('Phase 4: Release evaluation')) {
         this.stage('control', 'Checking release requirements…');
       } else if (line.includes('Quality gates failed - promotion blocked')) {
-        this.outcome = 'Candidate did not pass checks. Current model kept.';
+        this.decide('rejected');
       } else if (line.includes('Control plane cycle complete - promotion blocked')) {
-        this.outcome ||= 'Candidate was not promoted. Current model kept.';
+        if (!this.outcome) this.decide('blocked');
       } else if (line.includes('Control plane cycle complete - no action taken')) {
-        this.outcome = line.includes('await_labels')
-          ? 'Waiting for labels. Current model kept.' : 'No replacement requested. Current model kept.';
+        this.decide(line.includes('await_labels') ? 'waiting' : 'noop');
       } else if (line.includes('Control plane cycle complete - model promoted')) {
-        this.outcome = /stage=['"]?Production\b/.test(line)
-          ? 'Replacement model published.' : 'Candidate staged. Production model unchanged.';
+        this.decide(/stage=['"]?Production\b/.test(line) ? 'promoted' : 'staged');
       } else if (line.includes('Reloading model in API container')) {
         this.stage('reload', 'Loading the Production model…');
       }
@@ -504,18 +535,31 @@
       } else if (line.includes('Training pipeline complete') && step.id === 'train') {
         step.state = 'done'; step.detail = 'Model trained.';
       } else if (line.includes('Model promoted successfully') && step.id === 'promote') {
-        step.state = 'done'; step.detail = 'Model published.';
+        this.productionVersion = version;
+        if (this.demo) {
+          this.baselineVersion = version;
+          this.baselinePublished = true;
+        }
+        step.state = 'done';
+        step.detail = `${this.modelName(this.demo ? 'Baseline' : 'Model', version)} promoted to Production.`;
       } else if (line.includes('Reports saved') && step.id === 'monitor') {
         step.state = 'done'; step.detail = 'Analysis ready.';
       } else if (line.includes('Model reloaded:') && step.id === 'reload') {
-        step.state = 'done'; step.detail = 'Production model loaded.';
+        this.servingVersion = line.match(/Model reloaded: .*? v(\d+)\b/)?.[1] || '';
+        const name = this.servingVersion && this.servingVersion === this.baselineVersion
+          ? 'baseline' : this.servingVersion && this.servingVersion === this.candidateVersion
+          ? 'candidate' : 'model';
+        step.state = 'done';
+        step.detail = this.servingVersion
+          ? `API now serving ${this.modelName(name, this.servingVersion)}.`
+          : 'API loaded the Production model.';
       }
     }
     finish(code) {
       if (code === 0) {
         this.steps.forEach(step => step.state = 'done');
         this.result = this.outcome || 'Finished.';
-        this.resultClass = this.outcome && this.outcome !== 'Replacement model published.' ? 'notice' : 'success';
+        this.resultClass = this.outcome && this.decision !== 'promoted' ? 'notice' : 'success';
       } else {
         this.steps[this.active].state = 'failed';
         this.result = 'Run stopped. Open technical output for details.';
@@ -698,7 +742,8 @@
       label.className = 'step-label';
       label.textContent = step.label;
       content.appendChild(label);
-      if (step.detail && (step.state !== 'done' || (!runProgress.result && step.id === 'control'))) {
+      if (step.detail && (step.state !== 'done' || ['promote', 'reload'].includes(step.id)
+          || (!runProgress.result && step.id === 'control'))) {
         const detail = document.createElement('div');
         detail.className = 'step-detail';
         detail.textContent = step.detail;
