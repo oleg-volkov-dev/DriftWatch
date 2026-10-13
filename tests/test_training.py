@@ -320,3 +320,44 @@ def test_card_testing_model_distinguishes_attack_from_normal_payments(seed):
     extreme["transaction_amount"] = 1e6
     extreme["geo_distance_km"] = 1e6
     assert pipe.predict_proba(extreme)[0, 1] == pytest.approx(old_dashboard_defaults)
+
+
+@pytest.mark.parametrize("scenario,expected", [
+    ("drift_feature", False),
+    ("shock_black_friday", True),
+    ("shock_card_testing", True),
+])
+def test_demo_candidates_against_production_on_independent_holdout(scenario, expected):
+    import yaml
+    from sklearn.model_selection import train_test_split
+
+    from data.generator.generate import generate_df
+    from services.control_plane.agents.release import compare_production_metrics
+    from services.training.train import evaluation_metrics
+
+    root = Path(__file__).parents[1]
+    config = root / "data/generator/config"
+    base_cfg = yaml.safe_load((config / "base.yaml").read_text())
+    current_cfg = yaml.safe_load((config / f"{scenario}.yaml").read_text())
+    assert base_cfg["seed"] != current_cfg["seed"]
+    reference = generate_df(base_cfg)
+    current = generate_df(current_cfg)
+    base_train, _ = train_test_split(
+        reference, test_size=0.2, stratify=reference[LABEL], random_state=42,
+    )
+    train, holdout = train_test_split(
+        current, test_size=0.2, stratify=current[LABEL], random_state=42,
+    )
+    baseline = build_pipeline().fit(base_train.drop(columns=LABEL), base_train[LABEL])
+    candidate = build_pipeline().fit(train.drop(columns=LABEL), train[LABEL])
+    metrics = evaluation_metrics(holdout[LABEL], candidate.predict_proba(holdout)[:, 1])
+    metrics.update({
+        f"production_{k}": v for k, v in evaluation_metrics(
+            holdout[LABEL], baseline.predict_proba(holdout)[:, 1],
+        ).items()
+    })
+    policy = yaml.safe_load((root / "services/control_plane/policies/promotion.yaml").read_text())
+    assert metrics["auc"] >= policy["quality_gates"]["min_auc"]
+    assert metrics["average_precision"] >= policy["quality_gates"]["min_average_precision"]
+    comparison = compare_production_metrics(metrics, policy["production_comparison"])
+    assert (not comparison["failed_checks"]) is expected

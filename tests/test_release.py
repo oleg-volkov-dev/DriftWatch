@@ -12,6 +12,11 @@ POLICY = {
     "quality_gates": {"min_auc": 0.8, "min_average_precision": 0.2},
     "release_policy": {"promote_stage": "Production"},
 }
+COMPARISON = {
+    "max_auc_drop": 0.01,
+    "max_average_precision_drop": 0.01,
+    "min_brier_improvement": 0.002,
+}
 
 
 @pytest.fixture()
@@ -90,4 +95,58 @@ def test_registry_failure_cannot_be_treated_as_no_production(registry):
     registry.get_latest_versions.side_effect = RuntimeError("offline")
     with pytest.raises(RuntimeError, match="offline"):
         maybe_promote_latest_if_gates_pass(POLICY, "candidate")
+    registry.transition_model_version_stage.assert_not_called()
+
+
+@pytest.mark.parametrize("change,expected", [
+    ({}, True),
+    ({"brier_score": 0.199}, False),  # Tiny gains do not justify a release.
+    ({"brier_score": 0.22}, False),
+    ({"production_auc": 0.95}, False),
+    ({"production_average_precision": 0.55}, False),
+    ({"production_brier_score": float("nan")}, False),
+    ({"production_brier_score": None}, False),
+])
+def test_paired_quality_comparison(registry, change, expected):
+    run = registry.get_run.return_value
+    run.data.params = {"comparison_production_version": "1"}
+    run.data.metrics.update({
+        "brier_score": 0.18, "production_auc": 0.89,
+        "production_average_precision": 0.49, "production_brier_score": 0.20,
+        **change,
+    })
+    result = maybe_promote_latest_if_gates_pass(
+        {**POLICY, "production_comparison": COMPARISON}, "candidate"
+    )
+    assert result.promoted is expected
+    if not expected:
+        registry.transition_model_version_stage.assert_not_called()
+
+
+@pytest.mark.parametrize("recorded", [None, "none", "0"])
+def test_missing_or_stale_comparison_blocks_promotion(registry, recorded):
+    registry.get_run.return_value.data.params = {"comparison_production_version": recorded}
+    result = maybe_promote_latest_if_gates_pass(
+        {**POLICY, "production_comparison": COMPARISON}, "candidate"
+    )
+    assert result.details["reason"] == "missing_or_stale_production_comparison"
+    registry.transition_model_version_stage.assert_not_called()
+
+
+def test_first_release_does_not_require_a_nonexistent_champion(registry):
+    registry.get_latest_versions.return_value = []
+    registry.get_run.return_value.data.params = {"comparison_production_version": "none"}
+    result = maybe_promote_latest_if_gates_pass(
+        {**POLICY, "production_comparison": COMPARISON}, "candidate"
+    )
+    assert result.promoted
+    assert result.details["previous_version"] is None
+
+
+def test_missing_comparison_metrics_block_promotion(registry):
+    registry.get_run.return_value.data.params = {"comparison_production_version": "1"}
+    result = maybe_promote_latest_if_gates_pass(
+        {**POLICY, "production_comparison": COMPARISON}, "candidate"
+    )
+    assert result.details["reason"] == "missing_or_invalid_comparison_metrics"
     registry.transition_model_version_stage.assert_not_called()

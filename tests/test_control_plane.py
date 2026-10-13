@@ -20,7 +20,7 @@ def cycle(tmp_path, monkeypatch):
 
 def test_runner_passes_exact_training_run_to_release(cycle):
     with (
-        patch.object(runner, "train_and_log", return_value=TrainResult("mine", 0.9, 0.5)),
+        patch.object(runner, "train_and_log", return_value=TrainResult("mine", 0.9, 0.5)) as train,
         patch.object(
             runner,
             "maybe_promote_latest_if_gates_pass",
@@ -31,6 +31,7 @@ def test_runner_passes_exact_training_run_to_release(cycle):
     ):
         runner.main()
     assert release.call_args.kwargs["run_id"] == "mine"
+    assert train.call_args.kwargs["compare_production"] is True
     manifest = json.loads((cycle / "rollback_manifest.json").read_text())
     assert manifest["rollback_to_version"] == "1"
     assert manifest["promoted_version"] == "2"
@@ -42,6 +43,17 @@ def test_runner_training_failure_exits_nonzero(cycle):
             runner.main()
     assert error.value.code == 1
     assert json.loads((cycle / "training_result.json").read_text())["error"] == "bad data"
+
+
+def test_no_improvement_is_a_completed_evaluation(cycle):
+    with (
+        patch.object(runner, "train_and_log", return_value=TrainResult("mine", 0.7, 0.5)),
+        patch.object(runner, "maybe_promote_latest_if_gates_pass", return_value=ReleaseResult(
+            False, None, {"reason": "production_comparison_failed"},
+        )),
+    ):
+        runner.main()
+    assert not json.loads((cycle / "release_result.json").read_text())["promoted"]
 
 
 def test_runner_registry_failure_exits_nonzero(cycle):

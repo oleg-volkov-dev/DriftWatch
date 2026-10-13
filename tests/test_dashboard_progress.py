@@ -41,6 +41,7 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="Dashboard JavaScript check
     for (const [message, expected] of [
       ['Control plane cycle complete - no action taken action=await_labels', 'Waiting for labels'],
       ['Control plane cycle complete - no action taken action=noop', 'No replacement requested'],
+      ['Candidate did not improve on Production', 'did not improve enough on Production'],
       ['Control plane cycle complete - model promoted stage=Staging', 'Production was not changed'],
       ['Control plane cycle complete - model promoted stage=Production', 'Candidate is now in Production'],
     ]) {

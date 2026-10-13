@@ -43,7 +43,8 @@ def test_local_model_lifecycle(tmp_path, monkeypatch):
         "merchant_risk_shift": 0.3,
     }
     generate_df(cfg).to_csv(tmp_path / "current.csv", index=False)
-    train_and_log(str(tmp_path / "reference.csv"))
+    # Comparison also supports bootstrapping before a registered model exists.
+    train_and_log(str(tmp_path / "reference.csv"), compare_production=True)
     promote_latest_to_production()
 
     monkeypatch.setattr(
@@ -122,3 +123,44 @@ def test_quality_alerts_with_real_drift_detection(scenario, tmp_path, promotion_
     assert any(a.get("scope", "").startswith("hour_") for a in summary["alerts"])
     (tmp_path / "monitoring_summary.json").write_text(json.dumps(summary, allow_nan=False))
     assert plan(run_sentinel(str(tmp_path)), promotion_policy_path).action == "retrain_and_evaluate"
+
+
+@pytest.mark.parametrize("scenario,promoted", [
+    ("drift_feature", False),
+    ("shock_black_friday", True),
+    ("shock_card_testing", True),
+])
+def test_demo_release_with_real_policy(scenario, promoted, tmp_path, monkeypatch):
+    from data.generator.generate import generate_df
+    from services.control_plane import runner
+    from services.monitoring import run_monitoring
+    from services.training.train import promote_latest_to_production, train_and_log
+
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", (tmp_path / "mlruns").as_uri())
+    monkeypatch.setenv("MLFLOW_EXPERIMENT_NAME", "demo-release")
+    monkeypatch.setenv("MODEL_NAME", "fraud_detector")
+    for name in ("EVENTS_DIR", "DATA_DIR", "REPORT_DIR"):
+        monkeypatch.setenv(name, str(tmp_path))
+    monkeypatch.setenv("POLICY_PATH", "services/control_plane/policies/promotion.yaml")
+    for name, out in [("base", "reference"), (scenario, "current")]:
+        cfg = yaml.safe_load(open(f"data/generator/config/{name}.yaml"))
+        generate_df(cfg).to_csv(tmp_path / f"{out}.csv", index=False)
+    train_and_log(str(tmp_path / "reference.csv"))
+    promote_latest_to_production()
+    monkeypatch.setattr("sys.argv", [
+        "monitor", "--reference", str(tmp_path / "reference.csv"),
+        "--current", str(tmp_path / "current.csv"),
+        "--report-dir", str(tmp_path), "--pushgateway", "",
+    ])
+    run_monitoring.main()
+    runner.main()
+    result = json.loads((tmp_path / "release_result.json").read_text())
+    assert result["promoted"] is promoted
+    client = mlflow.tracking.MlflowClient()
+    assert str(client.get_latest_versions("fraud_detector", stages=["Production"])[0].version) == (
+        "2" if promoted else "1"
+    )
+    if not promoted:
+        assert result["details"]["reason"] == "production_comparison_failed"
+    else:
+        assert result["details"]["comparison"]["brier_improvement"] >= 0.002
