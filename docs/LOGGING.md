@@ -61,8 +61,15 @@ DriftWatch uses `structlog` for professional, structured logging across all serv
 ```
 2026-01-05 15:32:20 [info     ] Release agent evaluating latest model experiment=fraud-demo model_name=fraud_detector service=control_plane
 2026-01-05 15:32:20 [info     ] Latest model metrics retrieved  auc=0.6463 average_precision=0.4410 run_id=fa024b7013e540b38442eb8c3842306a service=control_plane
-2026-01-05 15:32:20 [warning  ] Quality gates failed - promotion blocked ap_gap=0.0000 auc=0.6463 auc_gap=0.1737 average_precision=0.4410 min_average_precision=0.2000 min_auc=0.8200 service=control_plane
+2026-01-05 15:32:20 [warning  ] Quality gates failed - promotion blocked ap_gap=-0.2410 auc=0.6463 auc_gap=0.0037 average_precision=0.4410 min_average_precision=0.2000 min_auc=0.6500 service=control_plane
 ```
+
+Candidates passing those minimums are compared with the pinned Production version
+on the same held-out transactions. `Candidate improved on Production` reports the
+metric differences before promotion. `Candidate did not improve on Production`
+reports failed comparison checks and keeps the baseline; the dashboard explains
+that no sufficient improvement was found. Missing or stale comparison evidence
+stops the release evaluation.
 
 ## Viewing Logs
 

@@ -314,7 +314,7 @@
 
     <div class="card demo-card">
       <div class="demo-title">Feature Drift</div>
-      <p class="demo-desc">A shifted batch with higher amounts, distances, and merchant risk scores. Runs: gen-base → train → promote → gen-feature → monitor → control → reload.</p>
+      <p class="demo-desc">Higher amounts, distances, and merchant risk scores, with the same fraud rules. Evaluates a replacement; keeps the baseline when retraining does not improve predictions.</p>
       <button class="btn btn-run" onclick="runCmd('demo-drift-feature', this)">▶ Run full demo</button>
     </div>
 
@@ -478,6 +478,7 @@
         ? `${baseline} remains in Production.` : 'Production was not changed.';
       this.outcome = {
         rejected: `${candidate} did not pass checks. ${retained}`,
+        not_better: `${candidate} did not improve enough on Production. ${retained}`,
         blocked: `${candidate} was not promoted. ${retained}`,
         waiting: `Waiting for labels. ${retained}`,
         noop: `No replacement requested. ${retained}`,
@@ -519,6 +520,8 @@
         this.stage('control', 'Checking release requirements…');
       } else if (line.includes('Quality gates failed - promotion blocked')) {
         this.decide('rejected');
+      } else if (line.includes('Candidate did not improve on Production')) {
+        this.decide('not_better');
       } else if (line.includes('Control plane cycle complete - promotion blocked')) {
         if (!this.outcome) this.decide('blocked');
       } else if (line.includes('Control plane cycle complete - no action taken')) {

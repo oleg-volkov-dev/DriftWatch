@@ -106,6 +106,10 @@ Direct service links:
 make demo-drift-feature
 ```
 
+With the default configuration, the baseline remains in Production because the
+candidate does not improve predictions on held-out current transactions. Drift
+triggers evaluation; it does not guarantee that retraining helps.
+
 This will:
 1. Generate baseline dataset (5k transactions)
 2. Train and register model to MLflow
@@ -208,10 +212,20 @@ seven features), giving `low` feature-drift severity. Amount is a configured
 critical feature, so the combined incident severity is at least `medium` and the
 control plane evaluates retraining. Outcome and model-quality changes can raise
 additional alerts. A replacement still has to pass the release quality gates.
-The mixed-traffic scenario is harder than replacing every overnight payment with
-an attack. With the supplied seed/config, its candidate AUC is about 0.764, below
-the 0.82 gate, so the demo keeps its freshly trained baseline model. This is a
-blocked promotion, not a failed reload; inspect `shared/events/release_result.json`.
+With the supplied configurations, Black Friday and card testing both promote an
+improved candidate. Both models are scored on the same 20% holdout from the current
+batch, excluded from candidate training. Scenario seeds differ from the baseline
+seed to avoid reusing baseline training transactions during evaluation.
+
+| Scenario | Baseline AUC on current holdout | Candidate AUC | Default decision |
+|---|---:|---:|---|
+| Feature drift | 0.712 | 0.706 | Keep baseline |
+| Black Friday | 0.746 | 0.761 | Promote candidate |
+| Card testing | 0.708 | 0.767 | Promote candidate |
+
+These are deterministic demo results, not real-world fraud performance claims.
+The release also checks probability error and average precision; details are in
+`shared/events/release_result.json` and the training run in MLflow.
 
 To apply the attack after an existing demo without training and promoting a fresh
 baseline, run:
@@ -331,12 +345,22 @@ drift_policy:
 **Release Agent** enforces quality gates:
 ```yaml
 quality_gates:
-  min_auc: 0.82
+  min_auc: 0.65
   min_average_precision: 0.20
+
+production_comparison:
+  max_auc_drop: 0.01
+  max_average_precision_drop: 0.01
+  min_brier_improvement: 0.002
 ```
 
-If gates pass → promote to Staging/Production
-If gates fail → block deployment, log reason
+Candidates must pass the absolute minimums and improve Brier score (mean squared
+probability error, lower is better) by at least 0.002 against Production on the same
+holdout. AUC and average precision may each drop by at most 0.01. These tolerances
+are demo policy choices, not statistical significance tests. The earlier 0.82 AUC
+floor rejected every default candidate despite useful gains on the shock scenarios.
+Missing comparison metrics or a changed Production version block promotion.
+When no Production model exists, only the absolute gates apply.
 
 Release evaluation uses the registered version belonging to the current training run. The API serves only Production models; failed reloads return HTTP 503 and preserve the working model. `make rollback` checks that its manifest still matches Production, restores the previous version, and reloads the API. A successful rollback consumes its manifest.
 
@@ -383,8 +407,13 @@ All automated decisions are governed by `services/control_plane/policies/promoti
 
 ```yaml
 quality_gates:
-  min_auc: 0.82
+  min_auc: 0.65
   min_average_precision: 0.20
+
+production_comparison:
+  max_auc_drop: 0.01
+  max_average_precision_drop: 0.01
+  min_brier_improvement: 0.002
 
 drift_policy:
   on_none:

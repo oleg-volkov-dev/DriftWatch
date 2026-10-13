@@ -1,4 +1,5 @@
-seed: 42
+# Independent transactions from the baseline training data.
+seed: 45
 n_rows: 7000
 
 # Simulate small card-testing payments with elevated fraud overnight.

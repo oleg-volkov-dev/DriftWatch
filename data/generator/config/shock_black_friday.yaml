@@ -1,4 +1,5 @@
-seed: 42
+# Independent transactions from the baseline training data.
+seed: 44
 n_rows: 7000
 
 drift:
