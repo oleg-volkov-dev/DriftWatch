@@ -56,7 +56,7 @@ def main() -> None:
         logger.info("Training on dataset", path=train_csv, using_current=current.exists())
 
         try:
-            train_res = train_and_log(reference_csv=train_csv)
+            train_res = train_and_log(reference_csv=train_csv, compare_production=True)
         except Exception as e:
             logger.error("Training phase failed", error=str(e))
             (events_dir / "training_result.json").write_text(
@@ -113,6 +113,7 @@ def main() -> None:
             )
             if release_res.details.get("reason") not in {
                 "quality_gates_failed",
+                "production_comparison_failed",
                 "promotion_disabled_by_policy",
                 "already_in_production",
             }:

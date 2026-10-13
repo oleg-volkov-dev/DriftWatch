@@ -1,6 +1,15 @@
 quality_gates:
-  min_auc: 0.82
+  # Synthetic labels are probabilistic: useful models score around 0.70–0.77.
+  min_auc: 0.65
   min_average_precision: 0.20
+
+# Compare both models on the same held-out current transactions.
+# Brier score measures probability error (lower is better). Require an actual
+# improvement and guard against worse ranking; drift alone is not a reason to ship.
+production_comparison:
+  max_auc_drop: 0.01
+  max_average_precision_drop: 0.01
+  min_brier_improvement: 0.002
 
 # Absolute metric changes versus the same Production model on reference data.
 # Alerts trigger evaluation; they do not bypass release quality gates.

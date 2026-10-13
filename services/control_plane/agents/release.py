@@ -33,6 +33,34 @@ def _get_current_production_version(model_name: str, client: MlflowClient) -> Op
     return str(versions[0].version) if versions else None
 
 
+def compare_production_metrics(metrics: Dict[str, Any], policy: Dict[str, Any]) -> Dict[str, Any]:
+    """Check paired holdout metrics; malformed comparison evidence must fail closed."""
+    values = {
+        key: float(metrics[key])
+        for name in ("auc", "average_precision", "brier_score")
+        for key in (name, f"production_{name}")
+    }
+    if not all(math.isfinite(v) and 0 <= v <= 1 for v in values.values()):
+        raise ValueError("Invalid comparison metrics")
+    limits = {key: float(policy[key]) for key in (
+        "max_auc_drop", "max_average_precision_drop", "min_brier_improvement",
+    )}
+    if not all(math.isfinite(v) and 0 <= v <= 1 for v in limits.values()):
+        raise ValueError("Invalid comparison policy")
+    changes = {
+        "auc_drop": values["production_auc"] - values["auc"],
+        "average_precision_drop": values["production_average_precision"] - values["average_precision"],
+        "brier_improvement": values["production_brier_score"] - values["brier_score"],
+    }
+    failed = []
+    for name in ("auc", "average_precision"):
+        if changes[f"{name}_drop"] > limits[f"max_{name}_drop"]:
+            failed.append(f"{name}_regression")
+    if changes["brier_improvement"] < limits["min_brier_improvement"]:
+        failed.append("insufficient_probability_improvement")
+    return {**changes, "failed_checks": failed}
+
+
 def rollback_to_version(
     rollback_version: str, expected_current_version: Optional[str] = None
 ) -> RollbackResult:
@@ -174,6 +202,28 @@ def maybe_promote_latest_if_gates_pass(
     if previous_production_version == str(latest.version):
         return ReleaseResult(False, None, {"reason": "already_in_production"})
 
+    comparison_details = {}
+    comparison = policy.get("production_comparison")
+    if comparison is not None:
+        # Even a Staging release compares against the current Production model.
+        compared_version = (previous_production_version if promote_stage == "Production"
+                            else _get_current_production_version(model_name, client))
+        recorded_version = run.data.params.get("comparison_production_version")
+        if recorded_version != (compared_version or "none"):
+            return ReleaseResult(False, None, {"reason": "missing_or_stale_production_comparison"})
+        if compared_version is not None:
+            try:
+                comparison_details = compare_production_metrics(run.data.metrics, comparison)
+            except (KeyError, TypeError, ValueError):
+                return ReleaseResult(False, None, {"reason": "missing_or_invalid_comparison_metrics"})
+            comparison_details["production_version"] = compared_version
+            if comparison_details["failed_checks"]:
+                logger.warning("Candidate did not improve on Production", **comparison_details)
+                return ReleaseResult(False, None, {
+                    "reason": "production_comparison_failed", "comparison": comparison_details,
+                })
+            logger.info("Candidate improved on Production", **comparison_details)
+
     logger.info(
         "Promoting model",
         model_name=model_name,
@@ -217,5 +267,6 @@ def maybe_promote_latest_if_gates_pass(
             "auc": auc,
             "average_precision": ap,
             "previous_version": previous_production_version,
+            "comparison": comparison_details,
         },
     )
