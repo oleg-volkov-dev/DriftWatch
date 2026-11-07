@@ -14,7 +14,9 @@ from services.training.train import (
     LABEL,
     TrainResult,
     build_pipeline,
+    fit_model,
     load_csv,
+    select_threshold,
 )
 
 SAMPLE_DATA = {
@@ -36,7 +38,7 @@ SAMPLE_DATA = {
         80.0,
     ],
     "transaction_hour": [10, 14, 2, 20, 8, 22, 11, 15, 3, 18, 9, 21, 4, 16, 7],
-    "customer_age": [35, 42, 28, 55, 30, 60, 25, 40, 33, 50, 38, 45, 27, 52, 31],
+    "payment_attempts_1h": [0, 1, 15, 2, 0, 20, 1, 2, 12, 0, 1, 14, 25, 2, 0],
     "account_tenure_days": [
         365,
         720,
@@ -247,40 +249,58 @@ def test_load_csv_normalizes_boolean_strings(tmp_path):
     assert load_csv(str(path))["is_fraud"].tolist() == SAMPLE_DATA["is_fraud"]
 
 
-def test_trained_model_learns_tenure_and_both_ends_of_night(tmp_path):
+def test_baseline_predictions_and_threshold_survive_persistence(tmp_path):
     import joblib
     import yaml
 
     from data.generator.generate import generate_df
 
-    cfg = yaml.safe_load(
-        (Path(__file__).parents[1] / "data/generator/config/base.yaml").read_text()
-    )
-    cfg["n_rows"] = 20000
-    data = generate_df(cfg)
-    pipe = build_pipeline().fit(data.drop(columns=[LABEL]), data[LABEL])
-    probe = pd.DataFrame({
-        "transaction_amount": [100.0] * 4,
-        "transaction_hour": [12] * 4,
-        "customer_age": [35] * 4,
-        "account_tenure_days": [1, 180, 730, 3650],
-        "merchant_risk_score": [0.3] * 4,
-        "geo_distance_km": [30.0] * 4,
-        "is_international": [False] * 4,
-    })
-    probabilities = pipe.predict_proba(probe)[:, 1]
-    assert np.all(np.diff(probabilities) < 0)
-    assert probabilities[0] - probabilities[-1] > 0.1
-    assert probabilities[2] - probabilities[3] < 0.02
-    # The preprocessing function must survive model persistence for API serving.
+    data = generate_df(yaml.safe_load(Path("data/generator/config/base.yaml").read_text()))
+    pipe, holdout = fit_model(data)
+    probe = pd.DataFrame([dict(
+        transaction_amount=20, transaction_hour=2, payment_attempts_1h=1,
+        account_tenure_days=180, merchant_risk_score=0.6, geo_distance_km=500,
+        is_international=False,
+    )])
+    probability = pipe.predict_proba(probe)[0, 1]
+    assert 0 < probability < 0.01  # Regression for the user's old 66.5% example.
+    assert probability < pipe.decision_threshold_
+    assert abs(pipe.predict_proba(holdout)[:, 1].mean() - holdout.is_fraud.mean()) < 0.001
     path = tmp_path / "model.joblib"
     joblib.dump(pipe, path)
-    np.testing.assert_allclose(joblib.load(path).predict_proba(probe)[:, 1], probabilities)
-    probe["account_tenure_days"] = 180
-    probe["transaction_hour"] = [2, 12, 22, 14]
-    probabilities = pipe.predict_proba(probe)[:, 1]
-    assert probabilities[0] > probabilities[1] + 0.05
-    assert probabilities[2] > probabilities[3] + 0.05
+    restored = joblib.load(path)
+    assert restored.decision_threshold_ == pipe.decision_threshold_
+    np.testing.assert_allclose(restored.predict_proba(probe), pipe.predict_proba(probe))
+
+
+def test_threshold_minimizes_validation_cost():
+    y = np.array([0, 0, 1, 1, 0])
+    p = np.array([0.001, 0.003, 0.02, 0.4, 0.03])
+    threshold = select_threshold(y, p)
+    def cost(t):
+        return int(((p >= t) & (y == 0)).sum()) + 100 * int(((p < t) & (y == 1)).sum())
+    assert cost(threshold) == min(cost(t) for t in [*p, 1.0])
+    assert threshold == 0.02
+
+
+def test_fit_validation_and_release_rows_do_not_overlap(monkeypatch):
+    import services.training.train as training
+
+    data = pd.concat([pd.DataFrame(SAMPLE_DATA)] * 10, ignore_index=True)
+    seen = {}
+    class Estimator:
+        def fit(self, features, labels):
+            seen["train"] = set(features.index)
+            return self
+        def predict_proba(self, features):
+            seen["validation"] = set(features.index)
+            return np.tile([0.9, 0.1], (len(features), 1))
+    monkeypatch.setattr(training, "build_pipeline", Estimator)
+    _, holdout = training.fit_model(data)
+    assert not seen["train"] & seen["validation"]
+    assert not (seen["train"] | seen["validation"]) & set(holdout.index)
+    assert len(seen["train"]) == 90
+    assert len(seen["validation"]) == len(holdout) == 30
 
 
 @pytest.mark.parametrize("seed", [42, 73, 123])
@@ -297,13 +317,13 @@ def test_card_testing_model_distinguishes_attack_from_normal_payments(seed):
     data = generate_df(cfg)
     train, _ = train_test_split(data, test_size=0.2, stratify=data[LABEL], random_state=42)
     pipe = build_pipeline().fit(train.drop(columns=[LABEL]), train[LABEL])
-    normal = dict(transaction_amount=50.0, transaction_hour=12, customer_age=35,
+    normal = dict(transaction_amount=50.0, transaction_hour=12, payment_attempts_1h=1,
                   account_tenure_days=730, merchant_risk_score=0.1, geo_distance_km=10.0,
                   is_international=False)
     probe = pd.DataFrame([
         normal,
         {**normal, "transaction_hour": 2},
-        {**normal, "transaction_hour": 2, "transaction_amount": 3.0},
+        {**normal, "transaction_hour": 2, "transaction_amount": 3.0, "payment_attempts_1h": 20},
         {**normal, "transaction_amount": 3.0},
         dict(normal, transaction_amount=150.0, transaction_hour=2, account_tenure_days=180,
              merchant_risk_score=0.6, geo_distance_km=500.0),
@@ -324,12 +344,11 @@ def test_card_testing_model_distinguishes_attack_from_normal_payments(seed):
 
 @pytest.mark.parametrize("scenario,expected", [
     ("drift_feature", False),
-    ("shock_black_friday", True),
+    ("shock_black_friday", False),
     ("shock_card_testing", True),
 ])
 def test_demo_candidates_against_production_on_independent_holdout(scenario, expected):
     import yaml
-    from sklearn.model_selection import train_test_split
 
     from data.generator.generate import generate_df
     from services.control_plane.agents.release import compare_production_metrics
@@ -342,14 +361,8 @@ def test_demo_candidates_against_production_on_independent_holdout(scenario, exp
     assert base_cfg["seed"] != current_cfg["seed"]
     reference = generate_df(base_cfg)
     current = generate_df(current_cfg)
-    base_train, _ = train_test_split(
-        reference, test_size=0.2, stratify=reference[LABEL], random_state=42,
-    )
-    train, holdout = train_test_split(
-        current, test_size=0.2, stratify=current[LABEL], random_state=42,
-    )
-    baseline = build_pipeline().fit(base_train.drop(columns=LABEL), base_train[LABEL])
-    candidate = build_pipeline().fit(train.drop(columns=LABEL), train[LABEL])
+    baseline, _ = fit_model(reference)
+    candidate, holdout = fit_model(current)
     metrics = evaluation_metrics(holdout[LABEL], candidate.predict_proba(holdout)[:, 1])
     metrics.update({
         f"production_{k}": v for k, v in evaluation_metrics(

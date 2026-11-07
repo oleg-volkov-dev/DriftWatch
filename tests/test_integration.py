@@ -33,7 +33,8 @@ def test_local_model_lifecycle(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "_model_version", None)
 
     cfg = yaml.safe_load(open("data/generator/config/base.yaml"))
-    cfg["n_rows"] = 1000
+    cfg["n_rows"] = 10000
+    cfg["fraud_logic"]["baseline_fraud_rate"] = 0.02
     reference = generate_df(cfg)
     reference.to_csv(tmp_path / "reference.csv", index=False)
     cfg["drift"] = {
@@ -116,18 +117,19 @@ def test_quality_alerts_with_real_drift_detection(scenario, tmp_path, promotion_
     report = Report(metrics=[DataDriftPreset()])
     report.run(reference_data=reference[FEATURES], current_data=current[FEATURES])
     summary, features = compute_drift_severity(report.as_dict())
-    assert summary["drifted_features"] == (1 if scenario == "card_testing" else 0)
+    if scenario == "label_only":
+        assert summary["drifted_features"] == 0
     summary = add_quality_signals(summary, features, reference, current, model, monitoring_policy({}))
     assert summary["incident_severity"] == "medium"
     assert any(a["kind"] == "model_quality" for a in summary["alerts"])
-    assert any(a.get("scope", "").startswith("hour_") for a in summary["alerts"])
+    assert all(a.get("scope", "overall") == "overall" for a in summary["alerts"])
     (tmp_path / "monitoring_summary.json").write_text(json.dumps(summary, allow_nan=False))
     assert plan(run_sentinel(str(tmp_path)), promotion_policy_path).action == "retrain_and_evaluate"
 
 
 @pytest.mark.parametrize("scenario,promoted", [
     ("drift_feature", False),
-    ("shock_black_friday", True),
+    ("shock_black_friday", False),
     ("shock_card_testing", True),
 ])
 def test_demo_release_with_real_policy(scenario, promoted, tmp_path, monkeypatch):
@@ -163,4 +165,4 @@ def test_demo_release_with_real_policy(scenario, promoted, tmp_path, monkeypatch
     if not promoted:
         assert result["details"]["reason"] == "production_comparison_failed"
     else:
-        assert result["details"]["comparison"]["brier_improvement"] >= 0.002
+        assert result["details"]["comparison"]["relative_brier_improvement"] >= 0.02

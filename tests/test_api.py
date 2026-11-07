@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 VALID_TXN = {
     "transaction_amount": 150.0,
     "transaction_hour": 14,
-    "customer_age": 35,
+    "payment_attempts_1h": 1,
     "account_tenure_days": 365,
     "merchant_risk_score": 0.2,
     "geo_distance_km": 10.0,
@@ -37,6 +37,7 @@ def client_no_model():
 def client_with_model():
     """TestClient with a mocked model that returns a fixed probability."""
     mock_model = MagicMock()
+    mock_model.decision_threshold_ = 0.5
     mock_model.predict_proba.return_value = np.array([[0.2, 0.8]])
 
     import services.api.main as api_module
@@ -135,6 +136,7 @@ class TestPredictEndpointWithModel:
 
     def test_predict_low_score_not_fraud(self) -> None:
         mock_model = MagicMock()
+        mock_model.decision_threshold_ = 0.5
         mock_model.predict_proba.return_value = np.array([[0.8, 0.2]])
 
         import services.api.main as api_module
@@ -206,3 +208,20 @@ def test_no_production_model_does_not_load_unapproved_version(monkeypatch):
             assert c.post("/reload").status_code == 503
             assert c.get("/health").json()["model_loaded"] is False
         client.return_value.search_model_versions.assert_not_called()
+
+
+def test_prediction_uses_threshold_stored_with_model(client_with_model):
+    import services.api.main as api
+
+    api._model.decision_threshold_ = 0.02
+    api._model.predict_proba.return_value = np.array([[0.97, 0.03]])
+    body = client_with_model.post("/predict", json=VALID_TXN).json()
+    assert body["is_fraud"] is True
+    assert body["decision_threshold"] == 0.02
+
+
+@pytest.mark.parametrize("attempts", [-1, 1.5, 1001])
+def test_invalid_attempt_counts_are_rejected(client_no_model, attempts):
+    assert client_no_model.post("/predict", json={
+        **VALID_TXN, "payment_attempts_1h": attempts,
+    }).status_code == 422

@@ -23,7 +23,7 @@ def transactions(hours=(2,), per_hour=200):
     return pd.DataFrame({
         "transaction_amount": 100.0,
         "transaction_hour": np.repeat(hours, per_hour),
-        "customer_age": 35,
+        "payment_attempts_1h": 1,
         "account_tenure_days": 180,
         "merchant_risk_score": risk,
         "geo_distance_km": 30.0,
@@ -68,15 +68,18 @@ def test_label_only_change_triggers_control_response(tmp_path, promotion_policy_
     assert plan(report, promotion_policy_path).action == "retrain_and_evaluate"
 
 
-def test_hourly_regression_is_detected_when_overall_change_is_small():
-    reference = transactions(hours=range(24))
-    current = reference.copy()
-    current.loc[current.transaction_hour == 2, "is_fraud"] = (
-        ~current.loc[current.transaction_hour == 2, "is_fraud"]
-    )
-    result = assess_quality(reference, current, RiskModel(), POLICY)
-    assert result["alerts"]
-    assert {a["scope"] for a in result["alerts"]} == {"hour_2"}
+def test_quality_requires_enough_fraud_examples_and_uses_model_threshold():
+    data = transactions()
+    data["is_fraud"] = False
+    data.loc[:4, "is_fraud"] = True
+    result = evaluate_window(data, RiskModel(), POLICY)
+    assert result["overall"]["status"] == "insufficient_class_support"
+    assert result["overall"]["metrics"] == {"fraud_rate": 0.025}
+    model = RiskModel()
+    model.decision_threshold_ = 0.05
+    metrics = evaluate_window(transactions(), model, POLICY)["overall"]["metrics"]
+    assert metrics["precision"] == 0.5  # All scores exceed this model's threshold.
+    assert metrics["recall"] == 1
 
 
 def test_critical_feature_alert_preserves_drift_ratio(tmp_path, promotion_policy_path):
@@ -95,7 +98,7 @@ def test_critical_feature_alert_preserves_drift_ratio(tmp_path, promotion_policy
 
 def test_unimportant_feature_does_not_escalate():
     result = add_quality_signals(
-        {**STABLE, "severity": "low"}, {"customer_age": 1},
+        {**STABLE, "severity": "low"}, {"account_tenure_days": 1},
         transactions(), transactions(), RiskModel(), POLICY,
     )
     assert result["incident_severity"] == "low"
@@ -126,7 +129,7 @@ def test_sparse_slices_skip_quality_metrics_and_alerts():
     result = assess_quality(reference, current, RiskModel(), POLICY)
     assert result["alerts"] == []
     assert result["current"]["overall"]["status"] == "insufficient_labels"
-    assert result["current"]["by_hour"]["2"]["metrics"] == {}
+    assert "by_hour" not in result["current"]
 
 
 def test_outcome_shift_is_available_even_without_model():
@@ -145,11 +148,8 @@ def test_single_class_and_no_flagged_predictions_are_not_healthy_zeros():
     data["merchant_risk_score"] = 0.0
     result = evaluate_window(data, RiskModel(), POLICY)
     metrics = result["overall"]["metrics"]
-    assert metrics["precision"] is None
-    assert metrics["recall"] is None
-    assert metrics["auc"] is None
-    assert metrics["average_precision"] is None
-    assert metrics["brier_score"] == 0
+    assert metrics == {"fraud_rate": 0.0}
+    assert result["overall"]["status"] == "insufficient_class_support"
     assert result["can_retrain"] is False
     json.dumps(result, allow_nan=False)
 
@@ -182,7 +182,7 @@ def test_invalid_probabilities_fail_monitoring(bad_value):
 
 
 @pytest.mark.parametrize("config", [
-    {"min_labeled_rows": 0}, {"min_hour_labeled_rows": 1.5},
+    {"min_labeled_rows": 0}, {"min_class_rows": 1.5},
     {"critical_features": ["is_fraud"]}, {"max_metric_drop": {"auc": -1}},
     {"max_metric_increase": {"typo": 0.1}}, {"max_fraud_rate_change": float("nan")},
     {"typo": 1},

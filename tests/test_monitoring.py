@@ -24,7 +24,7 @@ def _make_report(drifted_cols: list[str], all_cols: list[str]) -> dict:
 ALL_FEATURES = [
     "transaction_amount",
     "transaction_hour",
-    "customer_age",
+    "payment_attempts_1h",
     "account_tenure_days",
     "merchant_risk_score",
     "geo_distance_km",

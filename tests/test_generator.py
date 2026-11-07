@@ -58,8 +58,8 @@ class TestGenerateDfBase:
     def test_transaction_hour_in_range(self) -> None:
         assert self.df["transaction_hour"].between(0, 23).all()
 
-    def test_customer_age_in_range(self) -> None:
-        assert self.df["customer_age"].between(18, 90).all()
+    def test_payment_attempts_1h_in_range(self) -> None:
+        assert self.df["payment_attempts_1h"].between(0, 30).all()
 
     def test_merchant_risk_score_in_range(self) -> None:
         assert self.df["merchant_risk_score"].between(0, 1).all()
@@ -148,7 +148,7 @@ class TestGenerateDfFeatureDrift:
 
 
 class TestGenerateDfShock:
-    def test_card_testing_reduces_amounts_and_increases_overnight_fraud(self) -> None:
+    def test_card_testing_is_rare_rapid_small_payments_at_any_hour(self) -> None:
         cfg = {**BASE_CFG, "n_rows": 10000}
         baseline = generate_df(cfg)
         attacked = generate_df(
@@ -158,7 +158,9 @@ class TestGenerateDfShock:
         changed = attacked["transaction_amount"] != baseline["transaction_amount"]
         assert (changed & overnight).any()
         assert (overnight & ~changed).any()
-        assert changed.sum() / overnight.sum() == pytest.approx(0.5, abs=0.03)
+        assert changed.mean() == pytest.approx(0.01, abs=0.003)
+        assert (changed & ~overnight).any()
+        assert attacked.loc[changed, "payment_attempts_1h"].ge(10).all()
         assert attacked.loc[changed, "transaction_amount"].median() < 5
         assert (
             attacked.loc[changed, "is_fraud"].mean()
@@ -185,7 +187,10 @@ class TestGenerateDfShock:
         window = attacked["transaction_hour"].isin([12, 13])
         assert window.any()
         assert not attacked.loc[window, "is_fraud"].any()
-        pd.testing.assert_frame_equal(attacked[FEATURES], baseline[FEATURES])
+        if shock_name == "black_friday":
+            pd.testing.assert_frame_equal(attacked[FEATURES], baseline[FEATURES])
+        else:
+            assert attacked.loc[window, "payment_attempts_1h"].ge(10).all()
         pd.testing.assert_frame_equal(attacked.loc[~window], baseline.loc[~window])
 
     def test_card_testing_config_matches_defaults_and_is_reproducible(self) -> None:
@@ -279,21 +284,33 @@ def test_feature_scaling_increases_fraud_without_changing_other_features(scale):
     base = generate_df(cfg)
     shifted = generate_df({**cfg, "drift": {"type": "feature", scale: 3.0}})
     # Fixed risk scales must not cancel out a population-wide increase.
-    assert shifted["is_fraud"].mean() > base["is_fraud"].mean() + 0.02
+    assert shifted["is_fraud"].mean() > base["is_fraud"].mean()
 
 
-def test_new_account_risk_increases_fraud_most_for_young_accounts():
-    cfg = {**BASE_CFG, "n_rows": 30000}
-    neutral = generate_df(cfg)
-    weighted = generate_df({
-        **cfg, "fraud_logic": {**cfg["fraud_logic"], "new_account_weight": 1.2}
-    })
-    pd.testing.assert_frame_equal(neutral[FEATURES], weighted[FEATURES])
-    young = neutral["account_tenure_days"] < 90
-    mature = neutral["account_tenure_days"] > 730
-    delta = weighted["is_fraud"].astype(int) - neutral["is_fraud"].astype(int)
-    assert delta[young].mean() > 0.15
-    assert 0 <= delta[mature].mean() < 0.02
+def test_baseline_rate_is_calibrated_independently_of_drift():
+    from data.generator.generate import FraudLogic, baseline_intercept, risk_score
+
+    cfg = _load_config("data/generator/config/base.yaml")
+    baseline = generate_df(cfg)
+    shifted = generate_df({**cfg, "drift": {"type": "feature", "merchant_risk_shift": 0.5}})
+    assert baseline.is_fraud.mean() == pytest.approx(0.002, abs=0.0004)
+    assert shifted.is_fraud.mean() > baseline.is_fraud.mean() * 1.4
+    logic = FraudLogic(**cfg["fraud_logic"])
+    intercept = baseline_intercept(logic)
+    # Changing batch composition must not redefine the risk of a fixed row.
+    row = baseline.iloc[[0]]
+    score = risk_score(row, logic)[0] + intercept
+    assert risk_score(pd.concat([row, shifted]), logic)[0] + intercept == score
+    probe = pd.concat([row] * 3, ignore_index=True)
+    probe["account_tenure_days"] = [1, 180, 730]
+    assert np.all(np.diff(risk_score(probe, logic)) < 0)
+
+
+@pytest.mark.parametrize("rate", [0, 1, -0.1, float("nan")])
+def test_invalid_baseline_rate_is_rejected(rate):
+    cfg = {**BASE_CFG, "fraud_logic": {**BASE_CFG["fraud_logic"], "baseline_fraud_rate": rate}}
+    with pytest.raises(ValueError):
+        generate_df(cfg)
 
 
 def test_negative_new_account_weight_is_rejected():
@@ -313,7 +330,5 @@ def test_shock_affected_fraction_controls_which_transactions_change(fraction):
     if fraction == 0:
         pd.testing.assert_frame_equal(current, baseline)
     else:
-        overnight = baseline["transaction_hour"] <= 5
-        assert (current.loc[overnight, "transaction_amount"] <
-                baseline.loc[overnight, "transaction_amount"]).all()
-        pd.testing.assert_frame_equal(current.loc[~overnight], baseline.loc[~overnight])
+        assert current.payment_attempts_1h.ge(10).all()
+        assert current.transaction_amount.le(10).all()

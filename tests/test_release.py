@@ -15,7 +15,7 @@ POLICY = {
 COMPARISON = {
     "max_auc_drop": 0.01,
     "max_average_precision_drop": 0.01,
-    "min_brier_improvement": 0.002,
+    "min_relative_brier_improvement": 0.02,
 }
 
 
@@ -149,4 +149,15 @@ def test_missing_comparison_metrics_block_promotion(registry):
         {**POLICY, "production_comparison": COMPARISON}, "candidate"
     )
     assert result.details["reason"] == "missing_or_invalid_comparison_metrics"
+    registry.transition_model_version_stage.assert_not_called()
+
+
+@pytest.mark.parametrize("positives", [0, 49, float("nan")])
+def test_insufficient_holdout_fraud_blocks_release(registry, positives):
+    registry.get_run.return_value.data.metrics.update({
+        "evaluation_positives": positives, "evaluation_negatives": 10000,
+    })
+    policy = {**POLICY, "quality_gates": {**POLICY["quality_gates"], "min_evaluation_class_rows": 50}}
+    result = maybe_promote_latest_if_gates_pass(policy, "candidate")
+    assert result.details["reason"] == "insufficient_evaluation_labels"
     registry.transition_model_version_stage.assert_not_called()
