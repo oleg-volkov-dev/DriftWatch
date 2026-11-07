@@ -43,7 +43,7 @@ def compare_production_metrics(metrics: Dict[str, Any], policy: Dict[str, Any]) 
     if not all(math.isfinite(v) and 0 <= v <= 1 for v in values.values()):
         raise ValueError("Invalid comparison metrics")
     limits = {key: float(policy[key]) for key in (
-        "max_auc_drop", "max_average_precision_drop", "min_brier_improvement",
+        "max_auc_drop", "max_average_precision_drop", "min_relative_brier_improvement",
     )}
     if not all(math.isfinite(v) and 0 <= v <= 1 for v in limits.values()):
         raise ValueError("Invalid comparison policy")
@@ -52,11 +52,15 @@ def compare_production_metrics(metrics: Dict[str, Any], policy: Dict[str, Any]) 
         "average_precision_drop": values["production_average_precision"] - values["average_precision"],
         "brier_improvement": values["production_brier_score"] - values["brier_score"],
     }
+    changes["relative_brier_improvement"] = (
+        changes["brier_improvement"] / values["production_brier_score"]
+        if values["production_brier_score"] > 0 else 0.0
+    )
     failed = []
     for name in ("auc", "average_precision"):
         if changes[f"{name}_drop"] > limits[f"max_{name}_drop"]:
             failed.append(f"{name}_regression")
-    if changes["brier_improvement"] < limits["min_brier_improvement"]:
+    if changes["relative_brier_improvement"] < limits["min_relative_brier_improvement"]:
         failed.append("insufficient_probability_improvement")
     return {**changes, "failed_checks": failed}
 
@@ -161,6 +165,13 @@ def maybe_promote_latest_if_gates_pass(
     )
 
     gates = policy.get("quality_gates", {})
+    minimum = gates.get("min_evaluation_class_rows", 0)
+    if minimum and any(
+        not math.isfinite(float(run.data.metrics.get(key, 0)))
+        or float(run.data.metrics.get(key, 0)) < minimum
+        for key in ("evaluation_positives", "evaluation_negatives")
+    ):
+        return ReleaseResult(False, None, {"reason": "insufficient_evaluation_labels"})
     min_auc = float(gates.get("min_auc", 0.0))
     min_ap = float(gates.get("min_average_precision", 0.0))
 

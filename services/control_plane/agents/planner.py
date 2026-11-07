@@ -64,7 +64,7 @@ def plan(report: SentinelReport, policy_path: str) -> ExecutionPlan:
     if action == "retrain_and_evaluate" and current_quality.get("can_retrain") is False:
         return ExecutionPlan(
             action="await_labels",
-            notes="Incident detected; current data needs complete labels and both classes.",
+            notes="Incident detected; current data needs complete labels and at least 5 examples of each class.",
             policy=policy,
         )
 

@@ -1,7 +1,8 @@
 quality_gates:
-  # Synthetic labels are probabilistic: useful models score around 0.70–0.77.
+  # Demo tolerances, not statistical significance tests.
   min_auc: 0.65
-  min_average_precision: 0.20
+  min_average_precision: 0.01
+  min_evaluation_class_rows: 50
 
 # Compare both models on the same held-out current transactions.
 # Brier score measures probability error (lower is better). Require an actual
@@ -9,22 +10,22 @@ quality_gates:
 production_comparison:
   max_auc_drop: 0.01
   max_average_precision_drop: 0.01
-  min_brier_improvement: 0.002
+  min_relative_brier_improvement: 0.02
 
 # Absolute metric changes versus the same Production model on reference data.
 # Alerts trigger evaluation; they do not bypass release quality gates.
 monitoring_policy:
-  critical_features: [transaction_amount, merchant_risk_score, is_international]
+  critical_features: [transaction_amount, payment_attempts_1h, merchant_risk_score]
   min_labeled_rows: 100
-  min_hour_labeled_rows: 100
+  min_class_rows: 20
   max_metric_drop:
     precision: 0.10
     recall: 0.10
     auc: 0.05
   max_metric_increase:
-    brier_score: 0.05
-    calibration_error: 0.05
-  max_fraud_rate_change: 0.10
+    brier_score: 0.002
+    calibration_error: 0.005
+  max_fraud_rate_change: 0.002
 
 drift_policy:
   on_none:

@@ -6,15 +6,15 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, brier_score_loss, log_loss, roc_auc_score
 
-from data.generator.generate import FEATURES
+from services.common.features import FEATURES, decision_threshold
 
 DEFAULT_POLICY = {
-    "critical_features": ["transaction_amount", "merchant_risk_score", "is_international"],
+    "critical_features": ["transaction_amount", "payment_attempts_1h", "merchant_risk_score"],
     "min_labeled_rows": 100,
-    "min_hour_labeled_rows": 100,
+    "min_class_rows": 20,
     "max_metric_drop": {"precision": 0.10, "recall": 0.10, "auc": 0.05},
-    "max_metric_increase": {"brier_score": 0.05, "calibration_error": 0.05},
-    "max_fraud_rate_change": 0.10,
+    "max_metric_increase": {"brier_score": 0.002, "calibration_error": 0.005},
+    "max_fraud_rate_change": 0.002,
 }
 
 
@@ -26,7 +26,7 @@ def monitoring_policy(policy: dict) -> dict:
     critical = result["critical_features"]
     if not isinstance(critical, list) or set(critical) - set(FEATURES):
         raise ValueError("critical_features must be a list of input feature names")
-    for key in ("min_labeled_rows", "min_hour_labeled_rows"):
+    for key in ("min_labeled_rows", "min_class_rows"):
         if type(result[key]) is not int or result[key] < 1:
             raise ValueError(f"{key} must be a positive integer")
     for key, allowed in (
@@ -55,8 +55,8 @@ def labels(data: pd.DataFrame) -> pd.Series:
     return parsed
 
 
-def _metrics(y: np.ndarray, probability: np.ndarray) -> tuple[dict, list]:
-    predicted = probability >= 0.5  # Same operating threshold as the inference API.
+def _metrics(y: np.ndarray, probability: np.ndarray, threshold: float) -> tuple[dict, list]:
+    predicted = probability >= threshold  # Threshold persisted with this model.
     positive = y == 1
     tp = int((predicted & positive).sum())
     both_classes = len(np.unique(y)) == 2
@@ -93,7 +93,6 @@ def evaluate_window(data: pd.DataFrame, model, policy: dict) -> dict:
     target = labels(data)
     known = target.notna()
     y = target[known].to_numpy(dtype=int)
-    hours = data.loc[known, "transaction_hour"].to_numpy()
     probability = None
     if model is not None and known.any():
         classes = list(model.classes_)
@@ -106,36 +105,28 @@ def evaluate_window(data: pd.DataFrame, model, policy: dict) -> dict:
             raise ValueError("Model returned invalid probabilities")
         probability = scores[:, classes.index(1)]
 
-    def scope(mask: np.ndarray, minimum: int, total_rows: int) -> dict:
-        count = int(mask.sum())
-        result = {
-            "rows": total_rows,
-            "labeled_rows": count,
-            "label_coverage": count / total_rows if total_rows else 0.0,
-            "status": "insufficient_labels" if count < minimum else "available",
-            "metrics": {},
-        }
-        if count < minimum:
-            return result
-        result["metrics"]["fraud_rate"] = float(y[mask].mean())
+    count = len(y)
+    positives = int(y.sum())
+    result: dict = {
+        "rows": len(data), "labeled_rows": count, "positive_rows": positives,
+        "label_coverage": count / len(data) if len(data) else 0.0,
+        "status": "insufficient_labels", "metrics": {},
+    }
+    if count >= policy["min_labeled_rows"]:
+        result["metrics"]["fraud_rate"] = float(y.mean())
         if probability is None:
             result["status"] = "model_unavailable"
+        elif min(positives, count - positives) < policy["min_class_rows"]:
+            result["status"] = "insufficient_class_support"
         else:
-            metrics, bins = _metrics(y[mask], probability[mask])
+            result["status"] = "available"
+            result["decision_threshold"] = decision_threshold(model)
+            metrics, bins = _metrics(y, probability, result["decision_threshold"])
             result["metrics"].update(metrics)
             result["calibration_bins"] = bins
-        return result
-
     return {
-        "can_retrain": bool(len(data) and known.all() and len(np.unique(y)) == 2),
-        "overall": scope(np.ones(len(y), dtype=bool), policy["min_labeled_rows"], len(data)),
-        "by_hour": {
-            str(hour): scope(
-                hours == hour, policy["min_hour_labeled_rows"],
-                int((data["transaction_hour"] == hour).sum()),
-            )
-            for hour in range(24)
-        },
+        "can_retrain": bool(len(data) and known.all() and min(positives, count - positives) >= 5),
+        "overall": result,
     }
 
 
@@ -143,22 +134,20 @@ def assess_quality(reference: pd.DataFrame, current: pd.DataFrame, model, policy
     ref = evaluate_window(reference, model, policy)
     cur = evaluate_window(current, model, policy)
     alerts = []
-    for name in ["overall", *[f"hour_{h}" for h in range(24)]]:
-        r = ref["overall"] if name == "overall" else ref["by_hour"][name[5:]]
-        c = cur["overall"] if name == "overall" else cur["by_hour"][name[5:]]
-        for metric, limit, direction in [
-            *[(k, v, -1) for k, v in policy["max_metric_drop"].items()],
-            *[(k, v, 1) for k, v in policy["max_metric_increase"].items()],
-            ("fraud_rate", policy["max_fraud_rate_change"], 0),
-        ]:
-            before, after = r["metrics"].get(metric), c["metrics"].get(metric)
-            if before is None or after is None:
-                continue
-            change = (after - before) * direction if direction else abs(after - before)
-            if change > limit:
-                alerts.append({
-                    "kind": "outcome_shift" if metric == "fraud_rate" else "model_quality",
-                    "scope": name, "metric": metric, "reference": before, "current": after,
-                    "change": change, "threshold": limit, "severity": "medium",
-                })
+    r, c = ref["overall"], cur["overall"]
+    for metric, limit, direction in [
+        *[(k, v, -1) for k, v in policy["max_metric_drop"].items()],
+        *[(k, v, 1) for k, v in policy["max_metric_increase"].items()],
+        ("fraud_rate", policy["max_fraud_rate_change"], 0),
+    ]:
+        before, after = r["metrics"].get(metric), c["metrics"].get(metric)
+        if before is None or after is None:
+            continue
+        change = (after - before) * direction if direction else abs(after - before)
+        if change > limit:
+            alerts.append({
+                "kind": "outcome_shift" if metric == "fraud_rate" else "model_quality",
+                "scope": "overall", "metric": metric, "reference": before, "current": after,
+                "change": change, "threshold": limit, "severity": "medium",
+            })
     return {"reference": ref, "current": cur, "alerts": alerts}

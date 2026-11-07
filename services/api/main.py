@@ -14,6 +14,7 @@ from prometheus_client import Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, Response
 
+from services.common.features import decision_threshold
 from services.common.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -32,14 +33,14 @@ for outcome in ("fraud", "legit"):
 FRAUD_SCORE = Histogram(
     "fraud_score",
     "Distribution of fraud probability scores",
-    buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    buckets=[0.0001, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.5, 1.0],
 )
 
 
 class Txn(BaseModel):
     transaction_amount: float = Field(..., ge=0, allow_inf_nan=False)
     transaction_hour: int = Field(..., ge=0, le=23)
-    customer_age: int = Field(..., ge=0, le=120)
+    payment_attempts_1h: int = Field(..., ge=0, le=1000, description="Prior payment attempts in the last hour from this session/device")
     account_tenure_days: int = Field(..., ge=0)
     merchant_risk_score: float = Field(..., ge=0, le=1)
     geo_distance_km: float = Field(..., ge=0, allow_inf_nan=False)
@@ -50,6 +51,7 @@ class Pred(BaseModel):
     fraud_probability: float
     is_fraud: bool
     model_stage: Optional[str]
+    decision_threshold: float
 
 
 _model = None
@@ -76,6 +78,8 @@ def _load_model() -> None:
             raise RuntimeError("No Production model found. Promote a model before reloading.")
         version = str(versions[0].version)
         model = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/{version}")
+        if "customer_age" in getattr(model, "feature_names_in_", []):
+            raise RuntimeError("Old feature schema: regenerate data and train a new baseline")
         with _model_lock:
             _model, _model_stage, _model_version = model, "Production", version
         logger.info("Model loaded successfully", model_name=MODEL_NAME, version=version)
@@ -151,7 +155,8 @@ def predict(txn: Txn):
 
             result = Pred(
                 fraud_probability=proba,
-                is_fraud=proba >= 0.5,
+                is_fraud=proba >= decision_threshold(model),
+                decision_threshold=decision_threshold(model),
                 model_stage=stage,
             )
 

@@ -14,7 +14,7 @@ from evidently.report import Report
 from mlflow.tracking import MlflowClient
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
-from data.generator.generate import FEATURES
+from services.common.features import FEATURES
 from services.common.logging import configure_logging, get_logger
 from services.control_plane.agents.planner import load_policy
 from services.monitoring.quality import assess_quality, monitoring_policy
@@ -168,9 +168,7 @@ def push_drift_metrics(summary: dict, per_feature: dict[str, int], pushgateway_u
         ["window", "scope"], registry=registry,
     )
     for window, results in summary.get("quality", {}).items():
-        scopes = {"overall": results["overall"], **{
-            f"hour_{hour}": values for hour, values in results["by_hour"].items()
-        }}
+        scopes = {"overall": results["overall"]}
         for scope, values in scopes.items():
             available.labels(window, scope).set(int(values["status"] == "available"))
             coverage.labels(window, scope).set(values["label_coverage"])

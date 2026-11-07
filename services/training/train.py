@@ -10,12 +10,17 @@ import pandas as pd
 from mlflow.tracking import MlflowClient
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
+from sklearn.metrics import (
+    average_precision_score,
+    brier_score_loss,
+    precision_recall_curve,
+    roc_auc_score,
+)
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
-from services.common.features import amount_distance_risk, new_account_risk, small_overnight_payment
+from services.common.features import amount_distance_risk, new_account_risk, payment_activity
 from services.common.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -24,7 +29,7 @@ logger = get_logger(__name__)
 FEATURES_NUM = [
     "transaction_amount",
     "transaction_hour",
-    "customer_age",
+    "payment_attempts_1h",
     "account_tenure_days",
     "merchant_risk_score",
     "geo_distance_km",
@@ -71,15 +76,15 @@ def build_pipeline() -> Pipeline:
             (
                 "num",
                 StandardScaler(),
-                ["customer_age", "merchant_risk_score"],
+                ["merchant_risk_score"],
             ),
             (
                 "amount_distance", FunctionTransformer(amount_distance_risk),
                 ["transaction_amount", "geo_distance_km"],
             ),
             (
-                "small_overnight", FunctionTransformer(small_overnight_payment),
-                ["transaction_amount", "transaction_hour"],
+                "activity", FunctionTransformer(payment_activity),
+                ["transaction_amount", "payment_attempts_1h"],
             ),
             ("hour", OneHotEncoder(categories=[list(range(24))]), ["transaction_hour"]),
             ("tenure", FunctionTransformer(new_account_risk), ["account_tenure_days"]),
@@ -89,6 +94,32 @@ def build_pipeline() -> Pipeline:
     )
     clf = LogisticRegression(max_iter=500, n_jobs=1)
     return Pipeline([("pre", pre), ("clf", clf)])
+
+
+def select_threshold(y, probability):
+    """Minimize FP + 100*FN on validation data; costs are illustrative demo units."""
+    precision, recall, thresholds = precision_recall_curve(y, probability)
+    positives = int(np.asarray(y).sum())
+    tp = recall[:-1] * positives
+    fp = np.divide(tp * (1 - precision[:-1]), precision[:-1],
+                   out=np.full_like(tp, np.inf), where=precision[:-1] > 0)
+    costs = np.append(fp + 100 * (positives - tp), 100 * positives)
+    return float(np.append(thresholds, 1.0)[np.argmin(costs)])
+
+
+def fit_model(data):
+    """60% fit, 20% threshold validation, 20% untouched release evaluation."""
+    train_validation, holdout = train_test_split(
+        data, test_size=0.2, stratify=data[LABEL], random_state=42,
+    )
+    train, validation = train_test_split(
+        train_validation, test_size=0.25, stratify=train_validation[LABEL], random_state=43,
+    )
+    pipe = build_pipeline().fit(train.drop(columns=LABEL), train[LABEL].astype(int))
+    pipe.decision_threshold_ = select_threshold(
+        validation[LABEL], pipe.predict_proba(validation.drop(columns=LABEL))[:, 1],
+    )
+    return pipe, holdout
 
 
 def evaluation_metrics(y, proba) -> dict[str, float]:
@@ -113,14 +144,9 @@ def train_and_log(reference_csv: str, compare_production: bool = False) -> Train
         raise RuntimeError(f"Cannot connect to MLflow at {tracking_uri}: {e}") from e
 
     df = load_csv(reference_csv)
-    X = df.drop(columns=[LABEL])
-    y = df[LABEL].astype(int)
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
-    )
-
-    logger.info("Dataset split", train_size=len(X_train), test_size=len(X_test))
+    # Reject batches too small to split both classes across fit/validation/test.
+    if df[LABEL].value_counts().reindex([False, True], fill_value=0).min() < 5:
+        raise ValueError("Training needs at least 5 examples of each class")
 
     production = None
     production_version = "none"
@@ -138,11 +164,15 @@ def train_and_log(reference_csv: str, compare_production: bool = False) -> Train
             # Pin the version so a concurrent registry change cannot mix models.
             production = mlflow.sklearn.load_model(f"models:/{model_name}/{production_version}")
 
-    pipe = build_pipeline()
-
     with mlflow.start_run() as run:
         logger.info("Training model", run_id=run.info.run_id)
-        pipe.fit(X_train, y_train)
+        pipe, holdout = fit_model(df)
+        X_test = holdout.drop(columns=LABEL)
+        y_test = holdout[LABEL].astype(int)
+        mlflow.log_param("decision_threshold", pipe.decision_threshold_)
+        mlflow.log_param("threshold_false_negative_cost", 100)
+        mlflow.log_metric("evaluation_positives", int(y_test.sum()))
+        mlflow.log_metric("evaluation_negatives", int((y_test == 0).sum()))
 
         logger.info("Evaluating model on test set")
         proba = pipe.predict_proba(X_test)[:, 1]
@@ -150,6 +180,12 @@ def train_and_log(reference_csv: str, compare_production: bool = False) -> Train
         metrics = evaluation_metrics(y_test, proba)
         auc = metrics["auc"]
         ap = metrics["average_precision"]
+        flagged = proba >= pipe.decision_threshold_
+        true_positives = int((flagged & (y_test == 1)).sum())
+        mlflow.log_metric("recall_at_threshold", true_positives / int(y_test.sum()))
+        mlflow.log_metric("flagged_fraction", float(flagged.mean()))
+        if flagged.any():
+            mlflow.log_metric("precision_at_threshold", true_positives / int(flagged.sum()))
 
         logger.info("Model evaluation complete", auc=f"{auc:.4f}", average_precision=f"{ap:.4f}")
 
