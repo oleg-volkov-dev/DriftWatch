@@ -4,15 +4,15 @@
 [![Docker Build](https://github.com/oleg-volkov-dev/DriftWatch/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/oleg-volkov-dev/DriftWatch/actions/workflows/docker-publish.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Autonomous MLOps platform for fraud detection with policy-driven drift response**
+**A local MLOps demo of drift detection and policy-controlled model promotion**
 
-A production-grade MLOps demonstration that automatically detects, evaluates, and responds to model drift using a multi-agent control plane. Built with synthetic fraud data to showcase real-world ML reliability patterns.
+DriftWatch uses synthetic online card payments to demonstrate drift detection, candidate evaluation, and model promotion. Its probabilities describe the simulation; they are not validated real-world fraud estimates.
 
 ---
 
 ## Overview
 
-DriftWatch simulates a complete ML lifecycle where models monitor themselves and autonomously decide when to retrain, deploy, or rollback based on drift detection and quality gates.
+DriftWatch simulates a complete ML lifecycle where a triggered batch workflow decides whether to retrain and promote, with manual rollback available based on drift detection and quality gates.
 
 ### Key Features
 
@@ -111,7 +111,7 @@ candidate does not improve predictions on held-out current transactions. Drift
 triggers evaluation; it does not guarantee that retraining helps.
 
 This will:
-1. Generate baseline dataset (5k transactions)
+1. Generate baseline dataset (200k transactions)
 2. Train and register model to MLflow
 3. Promote model to Production stage
 4. Generate drifted dataset (feature drift)
@@ -159,7 +159,7 @@ Open [DriftWatch — API & Drift](http://localhost:3000/d/driftwatch-fraud-api).
   Counts are Prometheus estimates that account for counter resets; they may be
   fractional. Empty fractions or percentiles mean there were no observations,
   or not enough scrapes. Graphs use an adaptive rolling window.
-- **Flagged predictions** are model scores at or above 0.5, not confirmed fraud.
+- **Flagged predictions** are model scores at or above the loaded model’s validation-selected threshold, not confirmed fraud.
   Score percentiles are histogram estimates, not measures of model accuracy.
   Execution latency excludes request validation, queuing, and network time.
 - **Offline drift** shows the latest successfully published monitoring result at
@@ -197,35 +197,37 @@ surge. This scenario changes both feature distributions and the fraud rule.
 make demo-black-friday
 ```
 
-After either demo completes, try the predict form with `Hour = 22` and `Amount = 1500`. A retrained model replaces Production only if it passes the configured quality gates; a blocked release keeps the existing model and predictions.
+A retrained model replaces Production only if it passes the quality gates. The
+default Black Friday scenario retains the baseline: the small improvement does
+not justify a release.
 
 ### Shock Event (Card Testing)
-Small overnight payments with elevated fraud probabilities during hours 00–05,
-mixed with ordinary overnight traffic. By default half of transactions in this
-window are selected for the attack.
+A rare attack changes about 1% of rows into small payments with 10–30 prior
+payment attempts in the last hour, at any time of day. Ordinary small payments
+and ordinary overnight purchases are not automatically treated as attacks.
 ```bash
 make demo-card-testing
 ```
 
-With the default config, monitoring detects drift in transaction amounts (one of
-seven features), giving `low` feature-drift severity. Amount is a configured
-critical feature, so the combined incident severity is at least `medium` and the
-control plane evaluates retraining. Outcome and model-quality changes can raise
-additional alerts. A replacement still has to pass the release quality gates.
-With the supplied configurations, Black Friday and card testing both promote an
-improved candidate. Both models are scored on the same 20% holdout from the current
-batch, excluded from candidate training. Scenario seeds differ from the baseline
-seed to avoid reusing baseline training transactions during evaluation.
+Try $3 with 20 prior attempts, then change only the attempts to 1. The candidate
+learns the small-payment/rapid-attempt pattern. Monitoring can trigger on outcome
+or model-quality changes even when feature-distribution drift is small.
+
+All supplied batches contain 200,000 transactions. Model fitting uses 60%,
+threshold selection uses a separate 20%, and release evaluation uses the final
+20%. Both candidate and incumbent are scored on that same release holdout.
+Scenario seeds differ from the baseline seed.
 
 | Scenario | Baseline AUC on current holdout | Candidate AUC | Default decision |
 |---|---:|---:|---|
-| Feature drift | 0.712 | 0.706 | Keep baseline |
-| Black Friday | 0.746 | 0.761 | Promote candidate |
-| Card testing | 0.708 | 0.767 | Promote candidate |
+| Feature drift | 0.729 | 0.742 | Keep baseline |
+| Black Friday | 0.728 | 0.733 | Keep baseline |
+| Card testing | 0.945 | 0.951 | Promote candidate |
 
-These are deterministic demo results, not real-world fraud performance claims.
-The release also checks probability error and average precision; details are in
-`shared/events/release_result.json` and the training run in MLflow.
+These are synthetic results, not real-world accuracy claims. AUC alone does not
+decide a release: card testing reduces Brier probability error by about 60%,
+whereas the other candidates do not meet the 2% relative improvement requirement.
+Details are in `shared/events/release_result.json` and MLflow.
 
 To apply the attack after an existing demo without training and promoting a fresh
 baseline, run:
@@ -241,31 +243,51 @@ make reload-api
 ## How It Works
 
 ### 1. Synthetic Data Generation
-Deterministic fraud dataset with configurable drift:
-- **Features**: transaction_amount, customer_age, merchant_risk, geo_distance, etc.
-- **Drift Types**: Feature distribution shifts, shock events
-- **Config-driven**: YAML files control drift parameters
+The default `baseline_fraud_rate: 0.002` targets **0.2%** expected fraud, not the
+previous 35.7%. A fixed independent calibration population (50,000 rows, seed
+2026) determines the intercept. The same fraud-logic configuration gives the same
+intercept across seeds, batch sizes, and scenarios; current batches are never
+recalibrated to hide drift. Realized rates vary with sampling and scenario changes.
 
-New accounts have extra synthetic risk of
-`new_account_weight * exp(-account_tenure_days / 180)` in the fraud score.
-The supplied scenarios use weight `1.2`; set it to `0` to make tenure neutral.
-Omitting it in a custom config also defaults to `0`. Customer age remains a neutral
-feature. These are demo assumptions, not empirically established fraud rules.
+The setting is synthetic **online card-payment attempts**. The 0.2% target and
+feature weights are illustrative assumptions. For context, the
+[EBA–ECB 2025 report, p. 19](https://www.ecb.europa.eu/press/intro/publications/pdf/ecb.ebaecb202512.en.pdf)
+reports 0.068% fraud by count for remote card payments in 2024; a
+[ULB/Worldline research cohort](https://fraud-detection-handbook.github.io/fraud-detection-handbook/Chapter_3_GettingStarted/Baseline_RealWorldData.html)
+reported about 0.25% for Belgian e-commerce in 2018. These populations are not
+identical to this simulation and do not validate its individual probabilities.
 
-High amounts use a fixed threshold of $150 and distance risk uses
-`min(geo_distance_km / 200, 1)`. These scales do not change with batch composition.
-Training uses the same bounded amount/distance signals and tenure decay, and
-encodes each hour separately. A small-payment/overnight interaction (amount <= $10,
-hour 00–05) lets it learn attack patterns without assigning the same extra risk to
-every overnight purchase. The dashboard displays probabilities to one decimal
-place. The default form (2 AM, merchant risk 0.6, $150, 500 km) is intentionally
-risky; try noon, $50, merchant risk 0.1, 10 km, and tenure 730 days for a lower-risk
-comparison. Very high scores can still be appropriate for attack-like inputs.
+Seven inputs keep the model small:
 
-Generator or preprocessing edits require new data and a newly trained model.
-For existing installations, rebuild the API first so it contains the new tenure
-transforms, then run a demo to regenerate data, train, promote the baseline, and
-reload:
+- Amount and local transaction hour.
+- `payment_attempts_1h`: prior attempts from the same session/device, including
+  declines. This replaces customer age. It is a generated history summary;
+  the demo does not simulate a ledger or collect device information.
+- Account tenure; its synthetic contribution decays as `exp(-days / 180)`.
+- Merchant risk index (0–1): a synthetic reputation signal, **not a probability**.
+- Distance between the payment IP location and the customer's usual IP location.
+  This is an approximate synthetic signal, not distance to an online merchant.
+- International status.
+
+Risk uses bounded amount/distance effects and a rapid-attempt indicator (10 or
+more attempts). Card testing adds a small-payment interaction ($10 or less).
+These thresholds and coefficients are demo choices, not proven fraud rules.
+The research handbook's [simulator](https://fraud-detection-handbook.github.io/fraud-detection-handbook/Chapter_3_GettingStarted/SimulatedDataset.html)
+is useful background on rare labels and controlled fraud scenarios.
+
+The dashboard starts with an ordinary $20 payment, one prior attempt, and shows
+**Flagged / Not flagged**, a synthetic probability to three decimal places, and
+the model's flagging threshold. Each model selects its threshold on validation
+data by minimizing `false positives + 100 × false negatives`. The cost ratio is
+illustrative, not monetary. MLflow logs the threshold and release-holdout precision,
+recall, and flagged fraction. A threshold changes the decision, not the probability.
+Calibration against synthetic labels is not evidence of real-world calibration.
+
+**Existing installations must regenerate data and retrain:** the old age-based
+models and CSVs are incompatible with the new attempt-count input. Rebuild the
+API, then run a full demo to publish and load a fresh baseline. Until then the
+API may report that no compatible model is loaded. Do not roll back to an old-schema
+model.
 
 ```bash
 docker compose up -d --build api
@@ -280,28 +302,29 @@ Evidently analyzes reference vs current data:
 
 Monitoring also loads the registered Production model once, pins its version,
 and evaluates that same model on reference and current data. The JSON summary
-includes precision and recall at the API's 0.5 threshold, ROC AUC, average
+includes precision and recall at the evaluated model's saved threshold, ROC AUC, average
 precision, Brier score, log loss, ten-bin calibration error and reliability-bin
-data, plus observed fraud prevalence. Metrics are calculated overall and by
-transaction hour. Feature-drift HTML remains a separate distribution report.
+data, plus observed fraud prevalence. Quality metrics are overall only: hourly
+slices have too few fraud examples. Feature-drift HTML is a separate report.
 
 The `monitoring_policy` section of `services/control_plane/policies/promotion.yaml`
 controls critical features, minimum label counts, and alert thresholds. Defaults:
 
-- Drift in amount, merchant risk, or international status raises an alert even
-  when only one feature changes.
-- At least 100 observed labels are required in **each** compared window, both
-  overall and for each hourly slice. Below this, metrics are marked unavailable.
-- Precision/recall drops over 0.10, AUC drops over 0.05, Brier/calibration-error
-  increases over 0.05, or absolute fraud-rate changes over 0.10 raise alerts.
-  These are absolute changes (0.10 means ten percentage points), not relative
-  percentages. They are demo thresholds, not statistical significance tests.
+- Drift in amount, prior attempts, or merchant risk raises an alert even when
+  only one feature changes.
+- At least 100 observed labels are required for outcome metrics, and at least
+  20 examples of **each class** for model-quality metrics in each window.
+- Precision/recall drops over 0.10, AUC drops over 0.05, Brier increases over
+  0.002, calibration-error increases over 0.005, or fraud-rate changes over
+  0.002 raise alerts. These are absolute changes, not significance tests.
 
 `severity` continues to describe feature drift alone; `incident_severity` also
 accounts for critical-feature, outcome, and model-quality alerts. Any alert raises
 the incident to at least medium. Sentinel passes this severity to the existing
 policy-driven planner; retraining never bypasses release gates. If current labels
-are incomplete or contain only one class, the planner records `await_labels`.
+are incomplete or have fewer than five examples of either class, the planner
+records `await_labels`. Promotion separately requires 50 examples of each class
+in the release holdout; tiny batches cannot authorize a release.
 
 The label column is optional and may contain missing values for delayed labels.
 Only labelled rows contribute to outcome/quality metrics, and label coverage is
@@ -318,11 +341,10 @@ Candidate-versus-incumbent release evaluation is a separate concern.
 Prometheus exports `monitoring_incident_severity`, `monitoring_alert_count`,
 per-alert `monitoring_alert`, `monitoring_quality{window,scope,metric}`,
 `monitoring_quality_available`, `monitoring_label_coverage`, and
-`monitoring_labeled_rows`. Scope is `overall` or `hour_0` through `hour_23`.
+`monitoring_labeled_rows`. Scope is `overall`.
 Undefined metric series are omitted, and each push replaces the previous batch.
 Grafana's labelled-outcomes section shows combined severity, active alerts,
-quality availability, label coverage, overall quality, probability errors, and
-recall by hour. Check the result-age panel because these are batch observations.
+quality availability, label coverage, overall quality, and probability errors. Check the result-age panel because these are batch observations.
 
 ### 3. Control Plane Execution
 
@@ -346,21 +368,22 @@ drift_policy:
 ```yaml
 quality_gates:
   min_auc: 0.65
-  min_average_precision: 0.20
+  min_average_precision: 0.01
+  min_evaluation_class_rows: 50
 
 production_comparison:
   max_auc_drop: 0.01
   max_average_precision_drop: 0.01
-  min_brier_improvement: 0.002
+  min_relative_brier_improvement: 0.02
 ```
 
-Candidates must pass the absolute minimums and improve Brier score (mean squared
-probability error, lower is better) by at least 0.002 against Production on the same
-holdout. AUC and average precision may each drop by at most 0.01. These tolerances
-are demo policy choices, not statistical significance tests. The earlier 0.82 AUC
-floor rejected every default candidate despite useful gains on the shock scenarios.
-Missing comparison metrics or a changed Production version block promotion.
-When no Production model exists, only the absolute gates apply.
+Candidates must pass the minimum AUC/AP and holdout-support gates, and reduce
+Brier score (mean squared probability error) by at least **2% relative** to
+Production on the same holdout. AUC and average precision may each drop by at
+most 0.01. Relative Brier improvement replaces the old absolute 0.002 gate, which
+was too large for many rare-event batches. Missing comparison evidence or a
+changed Production version blocks promotion. These are demo tolerances, not
+statistical significance tests. With no incumbent, the absolute gates still apply.
 
 Release evaluation uses the registered version belonging to the current training run. The API serves only Production models; failed reloads return HTTP 503 and preserve the working model. `make rollback` checks that its manifest still matches Production, restores the previous version, and reloads the API. A successful rollback consumes its manifest.
 
@@ -408,12 +431,13 @@ All automated decisions are governed by `services/control_plane/policies/promoti
 ```yaml
 quality_gates:
   min_auc: 0.65
-  min_average_precision: 0.20
+  min_average_precision: 0.01
+  min_evaluation_class_rows: 50
 
 production_comparison:
   max_auc_drop: 0.01
   max_average_precision_drop: 0.01
-  min_brier_improvement: 0.002
+  min_relative_brier_improvement: 0.02
 
 drift_policy:
   on_none:
@@ -472,17 +496,12 @@ make ci-local        # Simulate CI pipeline
 
 ---
 
-The `card_testing` shock simulates small payments used to test payment cards during
-hours 00–05. Its defaults randomly select half of transactions in this window,
-scale their amounts to 5% (with a minimum of 1), and multiply their fraud
-probabilities by 3 (capped at 1). The other transactions retain their base features
-and labels. This avoids teaching the model that every overnight transaction is
-part of the attack.
-The scenario keeps the configured row count and hour distribution; it does not
-simulate increased transaction volume. Adjust `spike_hours`, `amount_scale`,
-`fraud_spike_multiplier`, and `affected_fraction` in
-`data/generator/config/shock_card_testing.yaml`. An `affected_fraction` of 1 restores
-the all-overnight attack; 0 disables its amount and fraud-probability changes.
+The card-testing scenario selects 1% of transactions across all hours, scales
+amounts to 5% (clipped to $1–$10), sets 10–30 prior attempts, and adds 4 to their
+fraud log-odds. Unselected rows keep their features and labels. Configure
+`affected_fraction`, `spike_hours`, `amount_scale`, and `attack_log_odds` in the
+scenario YAML; `affected_fraction: 0` disables the attack. These are controlled
+synthetic changes, not a claim about the prevalence or success of real attacks.
 
 ## Development & CI/CD
 
@@ -547,4 +566,4 @@ MIT
 
 ## Acknowledgments
 
-Built to demonstrate production-ready MLOps patterns for fraud detection systems. Not intended for actual fraud detection use.
+Built to demonstrate MLOps patterns with synthetic fraud scenarios. Not intended for actual fraud detection use.

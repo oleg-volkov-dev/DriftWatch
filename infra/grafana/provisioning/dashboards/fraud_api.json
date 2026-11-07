@@ -702,7 +702,7 @@
           "range": false
         }
       ],
-      "description": "Share of successful API predictions with score >= 0.5 in the selected range. This is not the true fraud rate, precision, recall, or batch fraud prevalence. Empty without successful predictions."
+      "description": "Share of successful API predictions with score >= the loaded model’s validation-selected threshold in the selected range. This is not the true fraud rate, precision, recall, or batch fraud prevalence. Empty without successful predictions."
     },
     {
       "id": 9,
@@ -870,7 +870,7 @@
           "range": true
         }
       ],
-      "description": "Model flags at probability >= 0.5. Unflagged predictions are not verified legitimate transactions. Rolling window adapts to graph resolution."
+      "description": "Model flags at the loaded model’s validation-selected threshold. Unflagged predictions are not verified legitimate transactions. Rolling window adapts to graph resolution."
     },
     {
       "id": 12,
@@ -1687,7 +1687,7 @@
           "range": false
         }
       ],
-      "description": "Latest batch metrics at the API threshold of 0.5. Higher is better. AUC/AP require both classes; precision requires flagged predictions; recall requires positives. Undefined metrics are omitted."
+      "description": "Latest batch metrics at each evaluated model’s validation-selected threshold. Higher is better. AUC/AP require both classes; precision requires flagged predictions; recall requires positives. Undefined metrics are omitted."
     },
     {
       "id": 30,
@@ -1748,66 +1748,6 @@
         }
       ],
       "description": "Lower is better. Calibration error uses ten equal-width probability bins; Brier score is mean squared probability error. These are descriptive batch estimates, not significance tests."
-    },
-    {
-      "id": 31,
-      "type": "bargauge",
-      "title": "Recall by transaction hour",
-      "gridPos": {
-        "x": 0,
-        "y": 68,
-        "w": 12,
-        "h": 8
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "orientation": "horizontal",
-        "displayMode": "basic",
-        "showUnfilled": true
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "percentunit",
-          "min": 0,
-          "max": 1,
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "noValue": "Unavailable"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "monitoring_quality{job=\"driftwatch_monitoring\",window=\"current\",scope=~\"hour_[0-9]+\",metric=\"recall\"}",
-          "legendFormat": "{{scope}}",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "description": "Each hour needs the configured minimum observed labels. Missing bars mean insufficient data or undefined recall, not zero. Hourly alerts compare against that same hour in the reference batch."
     },
     {
       "id": 32,

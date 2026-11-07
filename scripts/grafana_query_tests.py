@@ -148,23 +148,21 @@ def cases():
         "promql_expr_test": [
             check(27, 0, "monitoring_quality_available{" + labels + "}"),
             check(28, 0.25, "monitoring_label_coverage{" + labels + "}"),
-            check(29), check(30), check(31),
+            check(29), check(30),
         ],
     })
     tests.append({
-        "name": "Quality queries separate ranking, calibration, and hourly slices",
+        "name": "Quality queries separate ranking and calibration",
         "interval": "15s",
         "input_series": [
             series("monitoring_quality", "0.8+0x20", labels + ',metric="recall"'),
             series("monitoring_quality", "0.2+0x20", labels + ',metric="brier_score"'),
-            series("monitoring_quality", "0.1+0x20", labels.replace('overall', 'hour_2') + ',metric="recall"'),
-            series("monitoring_alert", "1+0x20", 'job="driftwatch_monitoring",kind="model_quality",scope="hour_2",signal="recall"'),
+            series("monitoring_alert", "1+0x20", 'job="driftwatch_monitoring",kind="model_quality",scope="overall",signal="recall"'),
         ],
         "promql_expr_test": [
             check(29, .8, 'monitoring_quality{' + labels + ',metric="recall"}'),
             check(30, .2, 'monitoring_quality{' + labels + ',metric="brier_score"}'),
-            check(31, .1, 'monitoring_quality{' + labels.replace('overall', 'hour_2') + ',metric="recall"}'),
-            check(32, 1, 'monitoring_alert{job="driftwatch_monitoring",kind="model_quality",scope="hour_2",signal="recall"}'),
+            check(32, 1, 'monitoring_alert{job="driftwatch_monitoring",kind="model_quality",scope="overall",signal="recall"}'),
         ],
     })
     return {"evaluation_interval": "15s", "tests": tests}

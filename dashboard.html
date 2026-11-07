@@ -258,30 +258,31 @@
   <div class="spacer"></div>
   <p class="section-label">Try the fraud detection API</p>
   <div class="predict-card">
+    <p class="card-desc">Synthetic online card payments, not validated real-world risk. Prior attempts are from the same session/device, including declines; merchant risk is an illustrative index, not a probability.</p>
     <div class="fields-grid">
       <div class="field">
         <label>Amount ($)</label>
-        <input type="number" id="f-amount" value="150" min="0" step="0.01" />
+        <input type="number" id="f-amount" value="20" min="0" step="0.01" />
       </div>
       <div class="field">
         <label>Hour (0–23)</label>
-        <input type="number" id="f-hour" value="2" min="0" max="23" />
+        <input type="number" id="f-hour" value="12" min="0" max="23" />
       </div>
       <div class="field">
-        <label>Customer Age</label>
-        <input type="number" id="f-age" value="35" min="18" max="120" />
+        <label>Prior attempts (last hour)</label>
+        <input type="number" id="f-attempts" value="1" min="0" max="1000" />
       </div>
       <div class="field">
         <label>Account Tenure (days)</label>
-        <input type="number" id="f-tenure" value="180" min="0" />
+        <input type="number" id="f-tenure" value="730" min="0" />
       </div>
       <div class="field">
-        <label>Merchant Risk (0–1)</label>
-        <input type="number" id="f-risk" value="0.6" min="0" max="1" step="0.01" />
+        <label>Merchant risk index (synthetic)</label>
+        <input type="number" id="f-risk" value="0.1" min="0" max="1" step="0.01" />
       </div>
       <div class="field">
-        <label>Distance (km)</label>
-        <input type="number" id="f-dist" value="500" min="0" />
+        <label>IP distance from usual location (km)</label>
+        <input type="number" id="f-dist" value="10" min="0" />
       </div>
     </div>
     <div class="predict-footer">
@@ -297,7 +298,7 @@
       <div class="result-row">
         <div id="result-badge" class="result-badge">—</div>
         <div class="result-prob">
-          <div class="result-prob-label">Fraud probability</div>
+          <div class="result-prob-label">Estimated fraud probability — synthetic model</div>
           <div id="result-pct" class="result-prob-val">—</div>
           <div class="bar-wrap"><div id="result-bar" class="bar" style="width:0%"></div></div>
           <div id="result-stage" class="result-stage"></div>
@@ -326,7 +327,7 @@
 
     <div class="card demo-card">
       <div class="demo-title">Card-Testing Attack</div>
-      <p class="demo-desc">Small card-testing payments mixed with normal overnight traffic. Half of payments between midnight and 6 AM are attacked. A candidate replaces the baseline only if release gates pass.</p>
+      <p class="demo-desc">A rare burst of small payments with repeated attempts, mixed with ordinary traffic at any hour. A candidate replaces the baseline only if release gates pass.</p>
       <button class="btn btn-run" onclick="runCmd('demo-card-testing', this)">▶ Run full demo</button>
     </div>
 
@@ -355,7 +356,7 @@
         <div class="pipe-btns">
           <button class="btn btn-run btn-sm" onclick="runCmd('gen-feature', this)" title="Gradual shift in amounts, distances, risk scores">▶ Feature drift</button>
           <button class="btn btn-run btn-sm" onclick="runCmd('gen-blackfriday', this)" title="Sudden late-night spike with elevated fraud multiplier">▶ Black Friday</button>
-          <button class="btn btn-run btn-sm" onclick="runCmd('gen-card-testing', this)" title="Small overnight payments with elevated fraud">▶ Card testing</button>
+          <button class="btn btn-run btn-sm" onclick="runCmd('gen-card-testing', this)" title="Small payments with rapid attempts with elevated fraud">▶ Card testing</button>
         </div>
       </div>
       <div class="pipe-ha">→</div>
@@ -634,7 +635,7 @@
     const body = {
       transaction_amount:   +document.getElementById('f-amount').value,
       transaction_hour:     +document.getElementById('f-hour').value,
-      customer_age:         +document.getElementById('f-age').value,
+      payment_attempts_1h:  +document.getElementById('f-attempts').value,
       account_tenure_days:  +document.getElementById('f-tenure').value,
       merchant_risk_score:  +document.getElementById('f-risk').value,
       geo_distance_km:      +document.getElementById('f-dist').value,
@@ -657,19 +658,19 @@
         return;
       }
 
-      const pct  = (data.fraud_probability * 100).toFixed(1);
+      const pct  = (data.fraud_probability * 100).toFixed(3);
       const fraud = data.is_fraud;
 
       // Color: green → yellow → red
       const hue = Math.round((1 - data.fraud_probability) * 120); // 120=green, 0=red
       const barColor = `hsl(${hue}, 85%, 50%)`;
 
-      document.getElementById('result-badge').textContent = fraud ? 'FRAUD' : 'SAFE';
+      document.getElementById('result-badge').textContent = fraud ? 'Flagged' : 'Not flagged';
       document.getElementById('result-badge').className   = 'result-badge ' + (fraud ? 'fraud' : 'safe');
       document.getElementById('result-pct').textContent   = pct + '%';
       document.getElementById('result-bar').style.width      = pct + '%';
       document.getElementById('result-bar').style.background = barColor;
-      document.getElementById('result-stage').textContent = data.model_stage ? `Model stage: ${data.model_stage}` : '';
+      document.getElementById('result-stage').textContent = `Flag threshold: ${(data.decision_threshold * 100).toFixed(3)}% · Model stage: ${data.model_stage || 'unknown'}`;
       document.getElementById('predict-result').style.display = 'block';
     } catch(e) {
       showPredictError('Could not reach API — is it running? (make up)');
