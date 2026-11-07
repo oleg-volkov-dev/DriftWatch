@@ -11,21 +11,18 @@ import pandas as pd
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from services.common.features import DISTANCE_SCALE_KM, HIGH_AMOUNT_THRESHOLD, new_account_risk
+from services.common.features import (
+    FEATURES as FEATURES,
+)
+from services.common.features import (
+    amount_distance_risk,
+    new_account_risk,
+    payment_activity,
+)
 from services.common.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
 
-
-FEATURES = [
-    "transaction_amount",
-    "transaction_hour",
-    "customer_age",
-    "account_tenure_days",
-    "merchant_risk_score",
-    "geo_distance_km",
-    "is_international",
-]
 
 SHOCK_DEFAULTS = {
     "black_friday": {
@@ -34,10 +31,11 @@ SHOCK_DEFAULTS = {
         "fraud_spike_multiplier": 1.2,
     },
     "card_testing": {
-        "spike_hours": [0, 1, 2, 3, 4, 5],
+        "spike_hours": list(range(24)),
         "amount_scale": 0.05,
-        "fraud_spike_multiplier": 3.0,
-        "affected_fraction": 0.5,
+        "fraud_spike_multiplier": 1.0,
+        "affected_fraction": 0.01,
+        "attack_log_odds": 4.0,
     },
 }
 
@@ -50,7 +48,9 @@ class FraudLogic:
     merchant_risk_weight: float
     distance_weight: float
     noise: float
-    new_account_weight: float = 0.0
+    new_account_weight: float = 0.5
+    velocity_weight: float = 4.0
+    baseline_fraud_rate: float = 0.002
 
 
 # Convert any number to value between 0 and 1 (get probability from the score)
@@ -64,6 +64,51 @@ def _load_config(path: str) -> Dict[str, Any]:
     if not isinstance(cfg, dict):
         raise ValueError("Generator configuration must be a mapping")
     return cfg
+
+
+def baseline_features(rng, n):
+    """Independent rows with synthetic history summaries, not a transaction ledger."""
+    attempts = rng.poisson(0.5, n)
+    burst = rng.random(n) < 0.01
+    attempts[burst] = rng.integers(10, 31, burst.sum())
+    return pd.DataFrame({
+        "transaction_amount": np.clip(rng.lognormal(4.2, 0.6, n), 1, 5000),
+        "transaction_hour": rng.integers(0, 24, n),
+        "payment_attempts_1h": attempts,
+        "account_tenure_days": np.clip(rng.gamma(2, 180, n).round(), 1, 3650).astype(int),
+        "merchant_risk_score": np.clip(rng.beta(2, 5, n) + 0.05, 0, 1),
+        "geo_distance_km": np.clip(rng.lognormal(3.2, 0.7, n), 0, 2000),
+        "is_international": rng.random(n) < 0.12,
+    })
+
+
+def risk_score(data, logic):
+    amount_distance = amount_distance_risk(data[["transaction_amount", "geo_distance_km"]])
+    activity = payment_activity(data[["transaction_amount", "payment_attempts_1h"]])
+    return (
+        logic.international_weight * data.is_international.to_numpy()
+        + logic.night_weight * ((data.transaction_hour <= 5) | (data.transaction_hour >= 22))
+        + logic.high_amount_weight * amount_distance[:, 0]
+        + logic.distance_weight * amount_distance[:, 1]
+        + logic.merchant_risk_weight * data.merchant_risk_score
+        + logic.new_account_weight * new_account_risk(data.account_tenure_days)
+        + logic.velocity_weight * activity[:, 0]
+    ).to_numpy()
+
+
+def baseline_intercept(logic):
+    """Match expected prevalence on a fixed calibration population (seed and size)."""
+    rng = np.random.default_rng(2026)
+    scores = risk_score(baseline_features(rng, 50000), logic)
+    scores += rng.normal(0, logic.noise, len(scores))
+    lo, hi = -float(np.max(scores)) - 40, -float(np.min(scores)) + 40
+    for _ in range(45):
+        mid = (lo + hi) / 2
+        if _sigmoid(scores + mid).mean() < logic.baseline_fraud_rate:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
 
 
 def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
@@ -103,6 +148,10 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
     logic = FraudLogic(**cfg.get("fraud_logic", {}))
     if not all(np.isfinite(v) for v in logic.__dict__.values()) or logic.noise < 0:
         raise ValueError("Fraud logic must be finite and noise must be nonnegative")
+    if not 0 < logic.baseline_fraud_rate < 1:
+        raise ValueError("baseline_fraud_rate must be between 0 and 1, exclusively")
+    if not np.isfinite(drift.get("attack_log_odds", 0)):
+        raise ValueError("attack_log_odds must be finite")
     if logic.new_account_weight < 0:
         raise ValueError("new_account_weight must be nonnegative")
 
@@ -113,25 +162,17 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
         drift_type=drift_type,
     )
 
-    # Base feature distributions
-    transaction_hour = rng.integers(0, 24, size=n)
-    customer_age = np.clip(rng.normal(38, 12, size=n).round(), 18, 90).astype(int)
-    account_tenure_days = np.clip(rng.gamma(2.0, 180.0, size=n).round(), 1, 3650).astype(
-        int
-    )  # Skew to the right, most accounts are young, cap 10years
-    merchant_risk_score = np.clip(
-        rng.beta(2, 5, size=n) + 0.05, 0, 1
-    )  # Skew to the left, most merchants are low risk
-    geo_distance_km = np.clip(
-        rng.lognormal(mean=3.2, sigma=0.7, size=n), 0, 2000
-    )  # Actual median distance = e^3.2 ~ 24.5km, cap 2000km
-    is_international = rng.random(size=n) < 0.12  # 12% of being an international transaction
-    transaction_amount = np.clip(
-        rng.lognormal(mean=4.2, sigma=0.6, size=n), 1, 5000
-    )  # Skew to the right, most transactions are tens of dollars
+    data = baseline_features(rng, n)
+    transaction_hour = data["transaction_hour"].to_numpy()
+    payment_attempts_1h = data["payment_attempts_1h"].to_numpy(copy=True)
+    account_tenure_days = data["account_tenure_days"].to_numpy()
+    merchant_risk_score = data["merchant_risk_score"].to_numpy(copy=True)
+    geo_distance_km = data["geo_distance_km"].to_numpy(copy=True)
+    is_international = data["is_international"].to_numpy(copy=True)
+    transaction_amount = data["transaction_amount"].to_numpy(copy=True)
 
     # Feature distribution changes
-    # Scaling up/down certain columns, trying to simulate how real data slowly changes over time
+    # A batch distribution shift; this is not a simulated time series.
     if drift_type == "feature":
         amount_scale = float(drift.get("amount_scale", 1.0))
         distance_scale = float(drift.get("distance_scale", 1.0))
@@ -159,6 +200,10 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
         transaction_amount = transaction_amount * np.where(is_affected, amount_scale, 1.0)
         transaction_amount = np.clip(transaction_amount, 1, 15000)
 
+        if shock_name == "card_testing":
+            transaction_amount[is_affected] = np.minimum(transaction_amount[is_affected], 10.0)
+            payment_attempts_1h[is_affected] = shock_rng.integers(10, 31, is_affected.sum())
+
         risk_shift = float(drift.get("merchant_risk_shift", 0.0))
         if risk_shift:
             merchant_risk_score = np.clip(merchant_risk_score + risk_shift, 0, 1)
@@ -178,56 +223,36 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
             affected_transactions=int(is_affected.sum()),
         )
 
-    # Trying to estimate how suspicious the transaction, adding some noise as well.
-    night = (transaction_hour <= 5) | (transaction_hour >= 22)
-    # Fixed scales preserve P(fraud | features) when feature distributions change.
-    high_amount = transaction_amount >= HIGH_AMOUNT_THRESHOLD
-
-    score = (
-        logic.international_weight * is_international.astype(float)
-        + logic.night_weight * night.astype(float)
-        + logic.high_amount_weight * high_amount.astype(float)
-        + logic.merchant_risk_weight * merchant_risk_score
-        + logic.new_account_weight * new_account_risk(account_tenure_days)
-        + logic.distance_weight
-        * np.clip(geo_distance_km / DISTANCE_SCALE_KM, 0, 1)
-    )
-
-    # Gaussian noise, so transactions with identical features won't always get the same label
-    score = score + rng.normal(0, logic.noise, size=n)
-
-    prob = _sigmoid(
-        score - 2.0
-    )  # Note: transaction with 0 risk signals has ~12% fraud probability by default
-
+    df = pd.DataFrame({
+        "transaction_amount": transaction_amount,
+        "transaction_hour": transaction_hour,
+        "payment_attempts_1h": payment_attempts_1h,
+        "account_tenure_days": account_tenure_days,
+        "merchant_risk_score": merchant_risk_score,
+        "geo_distance_km": geo_distance_km,
+        "is_international": is_international,
+    })
+    # Calibrate against a fixed independent baseline, never the current batch.
+    # Thus a changed population or attack can change the observed fraud rate.
+    intercept = baseline_intercept(logic)
+    score = risk_score(df, logic) + rng.normal(0, logic.noise, size=n)
+    if is_shock and shock_name == "card_testing":
+        score += is_affected * float(drift.get("attack_log_odds", 4.0))
+    prob = _sigmoid(score + intercept)
     if is_shock:
         prob = np.clip(
-            prob * np.where(is_affected, float(drift.get("fraud_spike_multiplier", 1.2)), 1.0),
-            0,
-            1,
+            prob * np.where(is_affected, float(drift["fraud_spike_multiplier"]), 1.0), 0, 1,
         )
-
-    is_fraud = rng.random(size=n) < prob  # Bernoulli trial
-
-    df = pd.DataFrame(
-        {
-            "transaction_amount": transaction_amount.astype(float),
-            "transaction_hour": transaction_hour.astype(int),
-            "customer_age": customer_age.astype(int),
-            "account_tenure_days": account_tenure_days.astype(int),
-            "merchant_risk_score": merchant_risk_score.astype(float),
-            "geo_distance_km": geo_distance_km.astype(float),
-            "is_international": is_international.astype(bool),
-            "is_fraud": is_fraud.astype(bool),
-        }
-    )
+    is_fraud = rng.random(size=n) < prob
+    df["is_fraud"] = is_fraud
 
     fraud_rate = float(is_fraud.mean())
     logger.info(
         "Data generation complete",
         total_transactions=n,
         fraud_count=int(is_fraud.sum()),
-        fraud_rate=f"{fraud_rate:.1%}",
+        fraud_rate=f"{fraud_rate:.3%}",
+        baseline_intercept=intercept,
     )
 
     return df

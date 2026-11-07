@@ -1,22 +1,16 @@
-# Independent transactions from the baseline training data.
+# Synthetic online payments; baseline rate is a demo assumption, not a validated risk model.
 seed: 45
-n_rows: 7000
-
-# Simulate small card-testing payments with elevated fraud overnight.
+n_rows: 200000
 drift:
   type: shock
   shock_name: card_testing
-  spike_hours: [0, 1, 2, 3, 4, 5]
-  amount_scale: 0.05
-  fraud_spike_multiplier: 3.0
-  # Preserve normal overnight traffic so the model can distinguish small attacks.
-  affected_fraction: 0.5
-
 fraud_logic:
-  international_weight: 1.2
-  night_weight: 0.9
-  high_amount_weight: 1.0
+  baseline_fraud_rate: 0.002
+  international_weight: 0.7
+  night_weight: 0.25
+  high_amount_weight: 0.5
   merchant_risk_weight: 1.3
-  distance_weight: 0.6
-  new_account_weight: 1.2
-  noise: 0.20
+  distance_weight: 0.3
+  new_account_weight: 0.5
+  velocity_weight: 4.0
+  noise: 0.2
