@@ -20,7 +20,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
-from services.common.features import amount_distance_risk, new_account_risk, payment_activity
+from services.common.features import (
+    COMPOUND_FEATURES,
+    amount_distance_risk,
+    compound_payment_risk,
+    new_account_risk,
+    smooth_payment_activity,
+)
 from services.common.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -83,8 +89,16 @@ def build_pipeline() -> Pipeline:
                 ["transaction_amount", "geo_distance_km"],
             ),
             (
-                "activity", FunctionTransformer(payment_activity),
+                "activity", FunctionTransformer(smooth_payment_activity),
                 ["transaction_amount", "payment_attempts_1h"],
+            ),
+            (
+                "compound",
+                Pipeline([
+                    ("risk", FunctionTransformer(compound_payment_risk)),
+                    ("scale", StandardScaler()),
+                ]),
+                COMPOUND_FEATURES,
             ),
             ("hour", OneHotEncoder(categories=[list(range(24))]), ["transaction_hour"]),
             ("tenure", FunctionTransformer(new_account_risk), ["account_tenure_days"]),
