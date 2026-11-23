@@ -220,12 +220,12 @@ Scenario seeds differ from the baseline seed.
 
 | Scenario | Baseline AUC on current holdout | Candidate AUC | Default decision |
 |---|---:|---:|---|
-| Feature drift | 0.729 | 0.742 | Keep baseline |
-| Black Friday | 0.728 | 0.733 | Keep baseline |
-| Card testing | 0.945 | 0.951 | Promote candidate |
+| Feature drift | 0.823 | 0.833 | Keep baseline |
+| Black Friday | 0.716 | 0.715 | Keep baseline |
+| Card testing | 0.954 | 0.960 | Promote candidate |
 
 These are synthetic results, not real-world accuracy claims. AUC alone does not
-decide a release: card testing reduces Brier probability error by about 60%,
+decide a release: card testing reduces Brier probability error by about 54%,
 whereas the other candidates do not meet the 2% relative improvement requirement.
 Details are in `shared/events/release_result.json` and MLflow.
 
@@ -267,21 +267,55 @@ Seven inputs keep the model small:
 - Merchant risk index (0–1): a synthetic reputation signal, **not a probability**.
 - Distance between the payment IP location and the customer's usual IP location.
   This is an approximate synthetic signal, not distance to an online merchant.
+  Its contribution uses `min(distance / 200, 1)`: it changes up to 200 km,
+  then stays constant. The dashboard highlights when this cap applies.
 - International status.
 
-Risk uses bounded amount/distance effects and a rapid-attempt indicator (10 or
-more attempts). Card testing adds a small-payment interaction ($10 or less).
+Risk uses bounded amount/distance effects and a gradual attempt contribution:
+`x² × (3 − 2x)`, where `x = min(attempts / 20, 1)`. There is no switch at 10;
+the contribution increases smoothly and caps at 20 attempts. Card testing adds
+a small-payment interaction ($10 or less) with the same gradual attempt curve.
+The simulator also models **combined risk**: a new account at a risky merchant,
+far from its usual IP location, becomes much more suspicious when the payment
+is large, international, and at night. The interaction multiplies merchant risk,
+`exp(-tenure / 180)`, and capped distance. Amount at least $150, night-time, and
+international status each use a factor of 1 when present and 0.5 otherwise.
+`compound_risk_weight: 12.0` weights that interaction in the simulated log odds.
+The generator includes a 0.2% mixture of payments covering these combinations
+and partial variants; their labels are still probabilistic. Training learns the
+same interaction from those examples. The overall baseline fraud target stays
+at 0.2%; it does not constrain every individual payment to a low probability.
 These thresholds and coefficients are demo choices, not proven fraud rules.
 The research handbook's [simulator](https://fraud-detection-handbook.github.io/fraud-detection-handbook/Chapter_3_GettingStarted/SimulatedDataset.html)
 is useful background on rare labels and controlled fraud scenarios.
 
-The dashboard starts with an ordinary $20 payment, one prior attempt, and shows
-**Flagged / Not flagged**, a synthetic probability to three decimal places, and
-the model's flagging threshold. Each model selects its threshold on validation
-data by minimizing `false positives + 100 × false negatives`. The cost ratio is
-illustrative, not monetary. MLflow logs the threshold and release-holdout precision,
-recall, and flagged fraction. A threshold changes the decision, not the probability.
-Calibration against synthetic labels is not evidence of real-world calibration.
+The dashboard starts with an ordinary $20 payment and one prior attempt. It shows
+actual **fraud probability** from 0–100%, with **Safe** below 50% and **Fraud** at
+50% or above. The bar's fill and color use that same probability without rescaling.
+Six descriptions use probability bands: below 10% “Looks very safe”, 10–30% “Safe”,
+30–50% “A little suspicious”, 50–70% “Might be fraud”, 70–90% “Probably fraud”,
+and 90–100% “High chance of fraud”. Boundaries belong to the higher band.
+These describe model estimates for synthetic payments, not confirmed outcomes.
+
+The dashboard's 50% summary is separate from the API's cost-sensitive review flag.
+Each model selects its API review threshold on validation data by minimizing
+`false positives + 100 × false negatives`; that flag can trigger below 50%.
+The cost ratio is illustrative, not monetary. The info icon explains this
+separation without showing the threshold number. MLflow logs the threshold and
+release-holdout precision, recall, and flagged fraction. Calibration against
+synthetic labels is not evidence of real-world calibration.
+
+Info icons explain the inputs. Automatic warnings appear only for invalid numbers
+or capped effects (amount at $150, distance at 200 km, attempts at 20).
+Editing an input hides the previous result until Predict is clicked again.
+
+**Updating from the step-based attempt model:** regenerate the baseline data,
+retrain, promote, and rebuild/reload the API. Existing registered models keep their
+original transform so their saved coefficients and thresholds are not silently
+reinterpreted. A rollback to one of those models also restores the old 10-attempt step.
+
+The combined-risk update likewise requires regenerating data and retraining;
+reloading an older model alone will not add the learned interaction.
 
 **Existing installations must regenerate data and retrain:** the old age-based
 models and CSVs are incompatible with the new attempt-count input. Rebuild the

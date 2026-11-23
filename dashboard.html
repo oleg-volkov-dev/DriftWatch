@@ -58,7 +58,20 @@
     /* ── Predict section ── */
     .predict-card { background: #1e2330; border: 1px solid #2d3348; border-radius: 10px; padding: 24px; }
     .fields-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 16px; }
+    .field { position: relative; }
     .field label { display: block; font-size: 0.72rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+    .field-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+    .field-heading label { margin: 0; }
+    .info { display: inline-block; position: relative; vertical-align: middle; text-transform: none; letter-spacing: normal; }
+    .info summary { display: flex; align-items: center; justify-content: center; width: 17px; height: 17px; border: 1px solid #475569; border-radius: 50%; color: #94a3b8; font-size: 11px; font-weight: 600; cursor: pointer; list-style: none; }
+    .info summary::-webkit-details-marker { display: none; }
+    .info summary:focus-visible { outline: 2px solid #818cf8; outline-offset: 3px; }
+    .info[open] summary { color: #c7d2fe; border-color: #818cf8; }
+    .info-content { position: absolute; z-index: 10; top: 24px; left: 0; width: min(260px, 75vw); padding: 12px; background: #0f1117; border: 1px solid #475569; border-radius: 8px; box-shadow: 0 8px 24px #0006; color: #cbd5e1; font-size: 0.78rem; font-weight: 400; line-height: 1.5; }
+    .field .info { position: static; }
+    .field .info-content { top: 26px; }
+    .field-hint { font-size: 0.72rem; color: #94a3b8; line-height: 1.5; margin-top: 6px; }
+    .field-hint.capped { color: #fbbf24; }
     .field input[type="number"] {
       width: 100%; background: #0f1117; border: 1px solid #2d3348; border-radius: 6px;
       padding: 8px 10px; color: #e2e8f0; font-size: 0.9rem;
@@ -88,12 +101,17 @@
     }
     .result-badge.fraud { color: #f87171; border-color: #7f1d1d; background: #1c0505; }
     .result-badge.safe  { color: #4ade80; border-color: #14532d; background: #021308; }
-    .result-prob { flex: 1; min-width: 160px; }
+    .result-verdict { flex: 0 1 200px; }
+    .result-verdict .result-badge { display: inline-block; }
+    .result-description { margin-top: 8px; color: #94a3b8; font-size: 0.75rem; line-height: 1.4; }
+    .result-prob { position: relative; flex: 1; min-width: 160px; }
+    .result-prob .info { position: static; }
     .result-prob-label { font-size: 0.72rem; color: #64748b; margin-bottom: 5px; }
     .result-prob-val { font-size: 1.4rem; font-weight: 700; color: #f1f5f9; }
-    .bar-wrap { height: 6px; background: #2d3348; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+    .bar-wrap { position: relative; height: 10px; background: #2d3348; border-radius: 5px; margin-top: 8px; overflow: hidden; }
+    .bar-wrap::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #e2e8f0; }
     .bar { height: 100%; border-radius: 3px; transition: width 0.4s, background 0.4s; }
-    .result-stage { font-size: 0.75rem; color: #475569; margin-top: 6px; }
+    .bar-scale { display: flex; justify-content: space-between; gap: 12px; font-size: 0.7rem; color: #94a3b8; margin-top: 5px; }
     #predict-error { margin-top: 20px; padding-top: 20px; border-top: 1px solid #2d3348; font-size: 0.82rem; color: #f87171; display: none; }
 
     /* ── Model status card ── */
@@ -256,33 +274,38 @@
 
   <!-- ── Predict ── -->
   <div class="spacer"></div>
-  <p class="section-label">Try the fraud detection API</p>
+  <div class="section-label">Try the fraud detection API <details class="info"><summary aria-label="About this demo">i</summary><div class="info-content">Synthetic online card payments. Scores illustrate this demo and are not validated real-world fraud estimates.</div></details></div>
   <div class="predict-card">
-    <p class="card-desc">Synthetic online card payments, not validated real-world risk. Prior attempts are from the same session/device, including declines; merchant risk is an illustrative index, not a probability.</p>
     <div class="fields-grid">
       <div class="field">
-        <label>Amount ($)</label>
-        <input type="number" id="f-amount" value="20" min="0" step="0.01" />
+        <div class="field-heading"><label for="f-amount">Amount ($)</label><details class="info"><summary aria-label="About amount">i</summary><div class="info-content">The high-amount effect starts at $150 and stays constant above it. Payments of $10 or less have a separate interaction with repeated attempts.</div></details></div>
+        <input type="number" id="f-amount" value="20" min="0" step="0.01" required aria-describedby="amount-hint" />
+        <div id="amount-hint" class="field-hint capped" aria-live="polite" hidden></div>
       </div>
       <div class="field">
-        <label>Hour (0–23)</label>
-        <input type="number" id="f-hour" value="12" min="0" max="23" />
+        <div class="field-heading"><label for="f-hour">Hour (0–23)</label><details class="info"><summary aria-label="About hour">i</summary><div class="info-content">Local transaction hour. Each hour has a learned effect; the simulation adds a night-time contribution from 22:00 through 05:59.</div></details></div>
+        <input type="number" id="f-hour" value="12" min="0" max="23" required aria-describedby="hour-hint" />
+        <div id="hour-hint" class="field-hint capped" aria-live="polite" hidden></div>
       </div>
       <div class="field">
-        <label>Prior attempts (last hour)</label>
-        <input type="number" id="f-attempts" value="1" min="0" max="1000" />
+        <div class="field-heading"><label for="f-attempts">Attempts (last hour)</label><details class="info"><summary aria-label="About attempts">i</summary><div class="info-content">Prior attempts from the same session/device, including declines. The effect increases gradually from 0 to 20 attempts, then caps.</div></details></div>
+        <input type="number" id="f-attempts" value="1" min="0" max="1000" required aria-describedby="attempts-hint" />
+        <div id="attempts-hint" class="field-hint capped" aria-live="polite" hidden></div>
       </div>
       <div class="field">
-        <label>Account Tenure (days)</label>
-        <input type="number" id="f-tenure" value="730" min="0" />
+        <div class="field-heading"><label for="f-tenure">Account tenure (days)</label><details class="info"><summary aria-label="About account tenure">i</summary><div class="info-content">New-account risk fades gradually as the account ages, with no hard cutoff. Training data covers 1–3,650 days.</div></details></div>
+        <input type="number" id="f-tenure" value="730" min="0" required aria-describedby="tenure-hint" />
+        <div id="tenure-hint" class="field-hint capped" aria-live="polite" hidden></div>
       </div>
       <div class="field">
-        <label>Merchant risk index (synthetic)</label>
-        <input type="number" id="f-risk" value="0.1" min="0" max="1" step="0.01" />
+        <div class="field-heading"><label for="f-risk">Merchant risk (0–1)</label><details class="info"><summary aria-label="About merchant risk">i</summary><div class="info-content">An illustrative merchant reputation index. A value of 0.8 does not mean an 80% fraud probability.</div></details></div>
+        <input type="number" id="f-risk" value="0.1" min="0" max="1" step="0.01" required aria-describedby="risk-hint" />
+        <div id="risk-hint" class="field-hint capped" aria-live="polite" hidden></div>
       </div>
       <div class="field">
-        <label>IP distance from usual location (km)</label>
-        <input type="number" id="f-dist" value="10" min="0" />
+        <div class="field-heading"><label for="f-dist">IP distance (km)</label><details class="info"><summary aria-label="About IP distance">i</summary><div class="info-content">Distance from the usual IP location. Its effect changes from 0–200 km, then caps.</div></details></div>
+        <input type="number" id="f-dist" value="10" min="0" step="any" required aria-describedby="distance-hint" />
+        <div id="distance-hint" class="field-hint capped" aria-live="polite" hidden></div>
       </div>
     </div>
     <div class="predict-footer">
@@ -296,12 +319,15 @@
     </div>
     <div id="predict-result">
       <div class="result-row">
-        <div id="result-badge" class="result-badge">—</div>
+        <div class="result-verdict">
+          <div id="result-badge" class="result-badge">—</div>
+          <div id="result-description" class="result-description" aria-live="polite"></div>
+        </div>
         <div class="result-prob">
-          <div class="result-prob-label">Estimated fraud probability — synthetic model</div>
+          <div class="result-prob-label">Fraud probability <details class="info"><summary aria-label="About fraud probability">i</summary><div class="info-content">The model's estimated fraud probability for synthetic payments. Safe means below 50%; Fraud means 50% or above, not a confirmed outcome. The API's separate review flag can trigger earlier.<div id="result-detail"></div></div></details></div>
           <div id="result-pct" class="result-prob-val">—</div>
-          <div class="bar-wrap"><div id="result-bar" class="bar" style="width:0%"></div></div>
-          <div id="result-stage" class="result-stage"></div>
+          <div id="result-meter" class="bar-wrap" role="meter" aria-label="Fraud probability; Fraud at 50 percent" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="result-bar" class="bar" style="width:0%"></div></div>
+          <div class="bar-scale"><span>0%</span><span>50%</span><span>100%</span></div>
         </div>
       </div>
     </div>
@@ -314,20 +340,20 @@
   <div class="demo-grid">
 
     <div class="card demo-card">
-      <div class="demo-title">Feature Drift</div>
-      <p class="demo-desc">Higher amounts, distances, and merchant risk scores, with the same fraud rules. Evaluates a replacement; keeps the baseline when retraining does not improve predictions.</p>
+      <div class="demo-title">Feature Drift <details class="info"><summary aria-label="About the feature drift demo">i</summary><div class="info-content">Fraud rules stay the same. Evaluates a replacement and keeps the baseline when retraining does not improve predictions.</div></details></div>
+      <p class="demo-desc">Higher amounts, distances, and merchant risk.</p>
       <button class="btn btn-run" onclick="runCmd('demo-drift-feature', this)">▶ Run full demo</button>
     </div>
 
     <div class="card demo-card">
-      <div class="demo-title">Black Friday Shock</div>
-      <p class="demo-desc">Larger late-evening payments with elevated fraud, merchant risk, and international activity. Transaction hours stay uniformly distributed.</p>
+      <div class="demo-title">Black Friday Shock <details class="info"><summary aria-label="About the Black Friday demo">i</summary><div class="info-content">Elevated fraud, merchant risk, and international activity in the late evening. Transaction hours stay uniformly distributed.</div></details></div>
+      <p class="demo-desc">Larger late-evening payments with elevated risk.</p>
       <button class="btn btn-run" onclick="runCmd('demo-black-friday', this)">▶ Run full demo</button>
     </div>
 
     <div class="card demo-card">
-      <div class="demo-title">Card-Testing Attack</div>
-      <p class="demo-desc">A rare burst of small payments with repeated attempts, mixed with ordinary traffic at any hour. A candidate replaces the baseline only if release gates pass.</p>
+      <div class="demo-title">Card-Testing Attack <details class="info"><summary aria-label="About the card-testing demo">i</summary><div class="info-content">Rare attacks mix with ordinary traffic at any hour. A candidate replaces the baseline only if release gates pass.</div></details></div>
+      <p class="demo-desc">A burst of small payments with repeated attempts.</p>
       <button class="btn btn-run" onclick="runCmd('demo-card-testing', this)">▶ Run full demo</button>
     </div>
 
@@ -429,6 +455,78 @@
 
 </div><!-- /layout -->
 
+<script id="prediction-logic">
+  function fieldWarning(name, value) {
+    if (!Number.isFinite(value) || value < 0) return 'Enter a valid, non-negative number.';
+    if (['hour', 'attempts', 'tenure'].includes(name) && !Number.isInteger(value)) return 'Use a whole number.';
+    if (name === 'dist' && value >= 200) return 'Distance effect capped at 200 km.';
+    if (name === 'amount') {
+      if (value >= 150) return 'High-amount effect capped: $150 and above count equally.';
+    }
+    if (name === 'attempts') {
+      if (value > 1000) return 'Enter at most 1,000 attempts.';
+      if (value >= 20) return 'Attempt effect capped at 20; more attempts count equally.';
+    }
+    if (name === 'hour') {
+      if (value > 23) return 'Enter an hour from 0 to 23.';
+    }
+    if (name === 'risk') {
+      if (value > 1) return 'Enter a merchant index from 0 to 1.';
+    }
+    return '';
+  }
+
+  function updateFieldHints() {
+    for (const name of ['amount', 'hour', 'attempts', 'tenure', 'risk', 'dist']) {
+      const input = document.getElementById('f-' + name);
+      const hint = document.getElementById((name === 'dist' ? 'distance' : name) + '-hint');
+      const message = input.validity.stepMismatch
+        ? 'Use increments of ' + (input.step || '1') + '.'
+        : fieldWarning(name, input.value.trim() === '' ? NaN : Number(input.value));
+      hint.textContent = message;
+      hint.hidden = !message;
+    }
+  }
+
+  function probabilityDescription(probability) {
+    if (probability < 0.1) return 'Looks very safe';
+    if (probability < 0.3) return 'Safe';
+    if (probability < 0.5) return 'A little suspicious';
+    if (probability < 0.7) return 'Might be fraud';
+    if (probability < 0.9) return 'Probably fraud';
+    return 'High chance of fraud';
+  }
+
+  function renderPrediction(data) {
+    const probability = data.fraud_probability;
+    if (!Number.isFinite(probability) || probability < 0 || probability > 1) {
+      throw new Error('API returned an invalid fraud probability.');
+    }
+    const fraud = probability >= 0.5;
+    const percent = probability * 100;
+    // Keep small probabilities visible numerically and avoid rounding a value
+    // across a description boundary (e.g. 49.9999% must not read as 50%).
+    let formatted = percent.toFixed(3) + '%';
+    const boundary = [10, 30, 50, 70, 90, 100].find(value => percent < value && Number(percent.toFixed(3)) === value);
+    if (boundary !== undefined) formatted = '<' + boundary + '%';
+    else if (percent > 0 && Number(percent.toFixed(3)) === 0) formatted = '<0.001%';
+    const description = probabilityDescription(probability);
+    const caption = `${formatted} fraud probability · ${fraud ? 'Fraud' : 'Safe'} · ${description}`;
+    const hue = Math.round((1 - probability) * 120);
+
+    document.getElementById('result-badge').textContent = fraud ? 'Fraud' : 'Safe';
+    document.getElementById('result-badge').className = 'result-badge ' + (fraud ? 'fraud' : 'safe');
+    document.getElementById('result-description').textContent = description;
+    document.getElementById('result-pct').textContent = formatted;
+    document.getElementById('result-bar').style.width = percent + '%';
+    document.getElementById('result-bar').style.background = `hsl(${hue}, 85%, 50%)`;
+    const meter = document.getElementById('result-meter');
+    meter.setAttribute('aria-valuenow', percent);
+    meter.setAttribute('aria-valuetext', caption);
+    document.getElementById('result-detail').textContent = `Model stage: ${data.model_stage || 'unknown'}.`;
+    document.getElementById('predict-result').style.display = 'block';
+  }
+</script>
 <script id="progress-logic">
   // Reduce known lifecycle messages to a few steps. Unrecognised output stays
   // in the technical log; it must never imply that a model was deployed.
@@ -627,7 +725,32 @@
   setInterval(updateModelStatus, 8000);
 
   // ── Predict ───────────────────────────────────────────────────────────────
+  for (const input of document.querySelectorAll('.predict-card input')) {
+    input.addEventListener('input', () => {
+      updateFieldHints();
+      document.getElementById('predict-result').style.display = 'none';
+      document.getElementById('predict-error').style.display = 'none';
+    });
+  }
+  updateFieldHints();
+  document.addEventListener('click', event => {
+    for (const info of document.querySelectorAll('.info[open]')) {
+      if (!info.contains(event.target)) info.open = false;
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      for (const info of document.querySelectorAll('.info[open]')) {
+        info.open = false;
+        info.querySelector('summary').focus();
+      }
+    }
+  });
+
   async function predict() {
+    for (const input of document.querySelectorAll('.predict-card input[type="number"]')) {
+      if (!input.reportValidity()) return;
+    }
     const btn = document.querySelector('.btn-predict');
     btn.disabled = true;
     btn.textContent = 'Predicting…';
@@ -658,20 +781,7 @@
         return;
       }
 
-      const pct  = (data.fraud_probability * 100).toFixed(3);
-      const fraud = data.is_fraud;
-
-      // Color: green → yellow → red
-      const hue = Math.round((1 - data.fraud_probability) * 120); // 120=green, 0=red
-      const barColor = `hsl(${hue}, 85%, 50%)`;
-
-      document.getElementById('result-badge').textContent = fraud ? 'Flagged' : 'Not flagged';
-      document.getElementById('result-badge').className   = 'result-badge ' + (fraud ? 'fraud' : 'safe');
-      document.getElementById('result-pct').textContent   = pct + '%';
-      document.getElementById('result-bar').style.width      = pct + '%';
-      document.getElementById('result-bar').style.background = barColor;
-      document.getElementById('result-stage').textContent = `Flag threshold: ${(data.decision_threshold * 100).toFixed(3)}% · Model stage: ${data.model_stage || 'unknown'}`;
-      document.getElementById('predict-result').style.display = 'block';
+      renderPrediction(data);
     } catch(e) {
       showPredictError('Could not reach API — is it running? (make up)');
     } finally {
