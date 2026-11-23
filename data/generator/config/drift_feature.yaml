@@ -15,4 +15,5 @@ fraud_logic:
   distance_weight: 0.3
   new_account_weight: 0.5
   velocity_weight: 4.0
+  compound_risk_weight: 12.0
   noise: 0.2

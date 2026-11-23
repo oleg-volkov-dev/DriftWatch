@@ -12,12 +12,14 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from services.common.features import (
-    FEATURES as FEATURES,
+    COMPOUND_FEATURES,
+    amount_distance_risk,
+    compound_payment_risk,
+    new_account_risk,
+    smooth_payment_activity,
 )
 from services.common.features import (
-    amount_distance_risk,
-    new_account_risk,
-    payment_activity,
+    FEATURES as FEATURES,
 )
 from services.common.logging import configure_logging, get_logger
 
@@ -51,6 +53,7 @@ class FraudLogic:
     new_account_weight: float = 0.5
     velocity_weight: float = 4.0
     baseline_fraud_rate: float = 0.002
+    compound_risk_weight: float = 12.0
 
 
 # Convert any number to value between 0 and 1 (get probability from the score)
@@ -67,11 +70,11 @@ def _load_config(path: str) -> Dict[str, Any]:
 
 
 def baseline_features(rng, n):
-    """Independent rows with synthetic history summaries, not a transaction ledger."""
+    """Synthetic history summaries, with rare jointly risky payment examples."""
     attempts = rng.poisson(0.5, n)
     burst = rng.random(n) < 0.01
     attempts[burst] = rng.integers(10, 31, burst.sum())
-    return pd.DataFrame({
+    data = pd.DataFrame({
         "transaction_amount": np.clip(rng.lognormal(4.2, 0.6, n), 1, 5000),
         "transaction_hour": rng.integers(0, 24, n),
         "payment_attempts_1h": attempts,
@@ -80,11 +83,23 @@ def baseline_features(rng, n):
         "geo_distance_km": np.clip(rng.lognormal(3.2, 0.7, n), 0, 2000),
         "is_international": rng.random(n) < 0.12,
     })
+    # Independent marginals almost never produce new accounts simultaneously
+    # far from home, at risky merchants, making the dashboard's joint examples
+    # unsupported extrapolation. Cover those combinations and partial variants.
+    # Labels still come from the same probabilistic rules, never from this mask.
+    combined = rng.random(n) < 0.002
+    count = int(combined.sum())
+    data.loc[combined, "transaction_amount"] = rng.uniform(50, 1500, count)
+    data.loc[combined, "account_tenure_days"] = rng.integers(1, 91, count)
+    data.loc[combined, "merchant_risk_score"] = rng.uniform(0.5, 1, count)
+    data.loc[combined, "geo_distance_km"] = rng.uniform(50, 500, count)
+    data.loc[combined, "is_international"] = rng.random(count) < 0.7
+    return data
 
 
 def risk_score(data, logic):
     amount_distance = amount_distance_risk(data[["transaction_amount", "geo_distance_km"]])
-    activity = payment_activity(data[["transaction_amount", "payment_attempts_1h"]])
+    activity = smooth_payment_activity(data[["transaction_amount", "payment_attempts_1h"]])
     return (
         logic.international_weight * data.is_international.to_numpy()
         + logic.night_weight * ((data.transaction_hour <= 5) | (data.transaction_hour >= 22))
@@ -93,6 +108,7 @@ def risk_score(data, logic):
         + logic.merchant_risk_weight * data.merchant_risk_score
         + logic.new_account_weight * new_account_risk(data.account_tenure_days)
         + logic.velocity_weight * activity[:, 0]
+        + logic.compound_risk_weight * compound_payment_risk(data[COMPOUND_FEATURES])[:, 0]
     ).to_numpy()
 
 
@@ -154,6 +170,8 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
         raise ValueError("attack_log_odds must be finite")
     if logic.new_account_weight < 0:
         raise ValueError("new_account_weight must be nonnegative")
+    if not np.isfinite(logic.compound_risk_weight) or logic.compound_risk_weight < 0:
+        raise ValueError("compound_risk_weight must be finite and nonnegative")
 
     logger.info(
         "Starting data generation",
