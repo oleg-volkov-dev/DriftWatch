@@ -320,6 +320,34 @@ def test_negative_new_account_weight_is_rejected():
         })
 
 
+@pytest.mark.parametrize("weight", [-1, float("nan"), float("inf")])
+def test_invalid_compound_risk_weight_is_rejected(weight):
+    with pytest.raises(ValueError, match="Fraud logic|compound_risk_weight"):
+        generate_df({
+            **BASE_CFG, "fraud_logic": {**BASE_CFG["fraud_logic"], "compound_risk_weight": weight}
+        })
+
+
+def test_combined_risk_is_supported_by_synthetic_labels_and_examples():
+    from data.generator.generate import FraudLogic, baseline_intercept, risk_score
+    from services.common.features import COMPOUND_FEATURES, compound_payment_risk
+
+    cfg = _load_config("data/generator/config/base.yaml")
+    data = generate_df(cfg)
+    logic = FraudLogic(**cfg["fraud_logic"])
+    probe = pd.DataFrame([dict(
+        transaction_amount=150, transaction_hour=0, payment_attempts_1h=1,
+        account_tenure_days=1, merchant_risk_score=0.8, geo_distance_km=200,
+        is_international=True,
+    )])
+    assert _sigmoid(risk_score(probe, logic) + baseline_intercept(logic))[0] > 0.9
+    combined = compound_payment_risk(data[COMPOUND_FEATURES])[:, 0] > 0.3
+    # The pattern has examples of both outcomes, not a hard fraud label.
+    assert combined.sum() >= 30
+    assert data.loc[combined, "is_fraud"].any()
+    assert (~data.loc[combined, "is_fraud"]).any()
+
+
 @pytest.mark.parametrize("fraction", [0.0, 1.0])
 def test_shock_affected_fraction_controls_which_transactions_change(fraction):
     baseline = generate_df(BASE_CFG)

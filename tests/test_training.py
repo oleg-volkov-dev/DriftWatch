@@ -265,6 +265,22 @@ def test_baseline_predictions_and_threshold_survive_persistence(tmp_path):
     probability = pipe.predict_proba(probe)[0, 1]
     assert 0 < probability < 0.01  # Regression for the user's old 66.5% example.
     assert probability < pipe.decision_threshold_
+    # Distance reaches inference and changes predictions below the synthetic cap.
+    # Beyond 200 km, even extreme inputs deliberately have the same effect.
+    distances = pd.concat([probe] * 5, ignore_index=True)
+    distances["geo_distance_km"] = [0, 100, 200, 1000, 1e6]
+    scores = pipe.predict_proba(distances)[:, 1]
+    assert scores[0] != scores[1]
+    assert scores[1] != scores[2]
+    np.testing.assert_allclose(scores[2:], scores[2], rtol=0, atol=0)
+    attempts = pd.concat([probe] * 22, ignore_index=True)
+    attempts["payment_attempts_1h"] = range(22)
+    probabilities = pipe.predict_proba(attempts)[:, 1]
+    assert np.all(np.diff(probabilities[:21]) > 0)
+    odds = probabilities / (1 - probabilities)
+    # No one-attempt transition should multiply the odds by more than two.
+    assert np.max(odds[1:] / odds[:-1]) < 2
+    assert probabilities[20] == probabilities[21]
     assert abs(pipe.predict_proba(holdout)[:, 1].mean() - holdout.is_fraud.mean()) < 0.001
     path = tmp_path / "model.joblib"
     joblib.dump(pipe, path)
@@ -281,6 +297,51 @@ def test_threshold_minimizes_validation_cost():
         return int(((p >= t) & (y == 0)).sum()) + 100 * int(((p < t) & (y == 1)).sum())
     assert cost(threshold) == min(cost(t) for t in [*p, 1.0])
     assert threshold == 0.02
+
+
+@pytest.mark.parametrize("seed", [42, 73, 123])
+def test_combined_risk_is_high_without_inflating_ordinary_payments(seed):
+    import yaml
+
+    from data.generator.generate import generate_df
+
+    config = yaml.safe_load(Path("data/generator/config/base.yaml").read_text())
+    model, holdout = fit_model(generate_df({**config, "seed": seed}))
+    normal = dict(
+        transaction_amount=20, transaction_hour=12, payment_attempts_1h=1,
+        account_tenure_days=730, merchant_risk_score=0.1, geo_distance_km=10,
+        is_international=False,
+    )
+    high = dict(
+        transaction_amount=1500, transaction_hour=0, payment_attempts_1h=1,
+        account_tenure_days=1, merchant_risk_score=0.9, geo_distance_km=1000,
+        is_international=True,
+    )
+    # Any single signal alone must not be confused with the joint pattern.
+    ordinary = pd.DataFrame([normal, *[
+        {**normal, feature: high[feature]} for feature in high
+    ]])
+    assert np.all(model.predict_proba(ordinary)[:, 1] < 0.05)
+    risky = pd.DataFrame([
+        dict(high, transaction_hour=hour, merchant_risk_score=merchant, account_tenure_days=tenure)
+        for hour in [0, 1, 2, 3, 4, 5, 22, 23]
+        for merchant in [0.8, 0.9]
+        for tenure in [1, 7]
+    ])
+    assert np.all(model.predict_proba(risky)[:, 1] > 0.9)
+    assert abs(model.predict_proba(holdout)[:, 1].mean() - holdout.is_fraud.mean()) < 0.001
+
+    # The interaction must retain caps and gradual attempts after training.
+    capped = pd.DataFrame([
+        dict(high, transaction_amount=150, geo_distance_km=200),
+        dict(high, transaction_amount=1e6, geo_distance_km=1e6),
+    ])
+    probabilities = model.predict_proba(capped)[:, 1]
+    assert probabilities[0] == pytest.approx(probabilities[1])
+    attempts = pd.DataFrame([dict(high, payment_attempts_1h=n) for n in [8, 9, 10, 11]])
+    probabilities = model.predict_proba(attempts)[:, 1]
+    odds = probabilities / (1 - probabilities)
+    assert np.all((odds[1:] / odds[:-1] > 1) & (odds[1:] / odds[:-1] < 2))
 
 
 def test_fit_validation_and_release_rows_do_not_overlap(monkeypatch):
@@ -334,6 +395,21 @@ def test_card_testing_model_distinguishes_attack_from_normal_payments(seed):
     assert attack > night + 0.3
     assert small_day < 0.35
     assert old_dashboard_defaults < 0.97
+    combined = pd.DataFrame([dict(
+        normal, transaction_amount=150, transaction_hour=hour, account_tenure_days=1,
+        merchant_risk_score=0.8, geo_distance_km=200, is_international=True,
+    ) for hour in [0, 2, 5, 22, 23]])
+    assert np.all(pipe.predict_proba(combined)[:, 1] > 0.9)
+    # Both normal and small-payment patterns must avoid the former 9→10 cliff.
+    for amount in [3.0, 50.0]:
+        adjacent = pd.DataFrame([
+            dict(normal, transaction_amount=amount, payment_attempts_1h=count)
+            for count in [8, 9, 10, 11]
+        ])
+        probabilities = pipe.predict_proba(adjacent)[:, 1]
+        assert np.all(np.diff(probabilities) > 0)
+        odds = probabilities / (1 - probabilities)
+        assert np.max(odds[1:] / odds[:-1]) < 2.5
     # Inputs far outside the training range must respect the bounded synthetic
     # amount/distance effects, rather than extrapolating toward certainty.
     extreme = probe.iloc[[-1]].copy()
