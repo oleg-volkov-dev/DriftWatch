@@ -278,12 +278,12 @@
   <div class="predict-card">
     <div class="fields-grid">
       <div class="field">
-        <div class="field-heading"><label for="f-amount">Amount ($)</label><details class="info"><summary aria-label="About amount">i</summary><div class="info-content">The high-amount effect starts at $150 and stays constant above it. Payments of $10 or less have a separate interaction with repeated attempts.</div></details></div>
+        <div class="field-heading"><label for="f-amount">Amount ($)</label><details class="info"><summary aria-label="About amount">i</summary><div class="info-content">Amount risk rises gradually from $0 to $300, then levels off. Repeated small payments have a separate effect that fades gradually between $5 and $30.</div></details></div>
         <input type="number" id="f-amount" value="20" min="0" step="0.01" required aria-describedby="amount-hint" />
         <div id="amount-hint" class="field-hint capped" aria-live="polite" hidden></div>
       </div>
       <div class="field">
-        <div class="field-heading"><label for="f-hour">Hour (0–23)</label><details class="info"><summary aria-label="About hour">i</summary><div class="info-content">Local transaction hour. Each hour has a learned effect; the simulation adds a night-time contribution from 22:00 through 05:59.</div></details></div>
+        <div class="field-heading"><label for="f-hour">Hour (0–23)</label><details class="info"><summary aria-label="About hour">i</summary><div class="info-content">Local transaction hour. Overnight risk rises gradually in the evening and fades in the morning. Moving through midnight does not reset risk.</div></details></div>
         <input type="number" id="f-hour" value="12" min="0" max="23" required aria-describedby="hour-hint" />
         <div id="hour-hint" class="field-hint capped" aria-live="polite" hidden></div>
       </div>
@@ -303,7 +303,7 @@
         <div id="risk-hint" class="field-hint capped" aria-live="polite" hidden></div>
       </div>
       <div class="field">
-        <div class="field-heading"><label for="f-dist">IP distance (km)</label><details class="info"><summary aria-label="About IP distance">i</summary><div class="info-content">Distance from the usual IP location. Its effect changes from 0–200 km, then caps.</div></details></div>
+        <div class="field-heading"><label for="f-dist">IP distance (km)</label><details class="info"><summary aria-label="About IP distance">i</summary><div class="info-content">Distance from the usual IP location. Its effect rises gradually from 0–200 km, then levels off smoothly.</div></details></div>
         <input type="number" id="f-dist" value="10" min="0" step="any" required aria-describedby="distance-hint" />
         <div id="distance-hint" class="field-hint capped" aria-live="polite" hidden></div>
       </div>
@@ -461,7 +461,7 @@
     if (['hour', 'attempts', 'tenure'].includes(name) && !Number.isInteger(value)) return 'Use a whole number.';
     if (name === 'dist' && value >= 200) return 'Distance effect capped at 200 km.';
     if (name === 'amount') {
-      if (value >= 150) return 'High-amount effect capped: $150 and above count equally.';
+      if (value >= 300) return 'Amount effect capped: $300 and above count equally.';
     }
     if (name === 'attempts') {
       if (value > 1000) return 'Enter at most 1,000 attempts.';
