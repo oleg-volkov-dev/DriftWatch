@@ -13,10 +13,11 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from services.common.features import (
     COMPOUND_FEATURES,
-    amount_distance_risk,
-    compound_payment_risk,
+    amount_distance_risk_v2,
+    compound_payment_risk_v2,
     new_account_risk,
-    smooth_payment_activity,
+    night_risk_v2,
+    payment_activity_v2,
 )
 from services.common.features import (
     FEATURES as FEATURES,
@@ -98,17 +99,17 @@ def baseline_features(rng, n):
 
 
 def risk_score(data, logic):
-    amount_distance = amount_distance_risk(data[["transaction_amount", "geo_distance_km"]])
-    activity = smooth_payment_activity(data[["transaction_amount", "payment_attempts_1h"]])
+    amount_distance = amount_distance_risk_v2(data[["transaction_amount", "geo_distance_km"]])
+    activity = payment_activity_v2(data[["transaction_amount", "payment_attempts_1h"]])
     return (
         logic.international_weight * data.is_international.to_numpy()
-        + logic.night_weight * ((data.transaction_hour <= 5) | (data.transaction_hour >= 22))
+        + logic.night_weight * night_risk_v2(data.transaction_hour)
         + logic.high_amount_weight * amount_distance[:, 0]
         + logic.distance_weight * amount_distance[:, 1]
         + logic.merchant_risk_weight * data.merchant_risk_score
         + logic.new_account_weight * new_account_risk(data.account_tenure_days)
         + logic.velocity_weight * activity[:, 0]
-        + logic.compound_risk_weight * compound_payment_risk(data[COMPOUND_FEATURES])[:, 0]
+        + logic.compound_risk_weight * compound_payment_risk_v2(data[COMPOUND_FEATURES])[:, 0]
     ).to_numpy()
 
 
