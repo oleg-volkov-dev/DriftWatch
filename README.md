@@ -107,7 +107,7 @@ make demo-drift-feature
 ```
 
 With the default configuration, the baseline remains in Production because the
-candidate does not improve predictions on held-out current transactions. Drift
+candidate does not improve predictions enough on held-out current transactions. Drift
 triggers evaluation; it does not guarantee that retraining helps.
 
 This will:
@@ -198,8 +198,8 @@ make demo-black-friday
 ```
 
 A retrained model replaces Production only if it passes the quality gates. The
-default Black Friday scenario retains the baseline: the small improvement does
-not justify a release.
+default Black Friday scenario retains the baseline: probability error does not
+improve enough to justify a release.
 
 ### Shock Event (Card Testing)
 A rare attack changes about 1% of rows into small payments with 10–30 prior
@@ -220,12 +220,12 @@ Scenario seeds differ from the baseline seed.
 
 | Scenario | Baseline AUC on current holdout | Candidate AUC | Default decision |
 |---|---:|---:|---|
-| Feature drift | 0.823 | 0.833 | Keep baseline |
-| Black Friday | 0.716 | 0.715 | Keep baseline |
-| Card testing | 0.954 | 0.960 | Promote candidate |
+| Feature drift | 0.840 | 0.842 | Keep baseline |
+| Black Friday | 0.791 | 0.794 | Keep baseline |
+| Card testing | 0.953 | 0.960 | Promote candidate |
 
 These are synthetic results, not real-world accuracy claims. AUC alone does not
-decide a release: card testing reduces Brier probability error by about 54%,
+decide a release: card testing reduces Brier probability error by about 46%,
 whereas the other candidates do not meet the 2% relative improvement requirement.
 Details are in `shared/events/release_result.json` and MLflow.
 
@@ -267,27 +267,43 @@ Seven inputs keep the model small:
 - Merchant risk index (0–1): a synthetic reputation signal, **not a probability**.
 - Distance between the payment IP location and the customer's usual IP location.
   This is an approximate synthetic signal, not distance to an online merchant.
-  Its contribution uses `min(distance / 200, 1)`: it changes up to 200 km,
-  then stays constant. The dashboard highlights when this cap applies.
+  Its contribution rises smoothly up to 200 km, then levels off. The dashboard
+  highlights when this cap applies.
 - International status.
 
-Risk uses bounded amount/distance effects and a gradual attempt contribution:
-`x² × (3 − 2x)`, where `x = min(attempts / 20, 1)`. There is no switch at 10;
-the contribution increases smoothly and caps at 20 attempts. Card testing adds
-a small-payment interaction ($10 or less) with the same gradual attempt curve.
-The simulator also models **combined risk**: a new account at a risky merchant,
-far from its usual IP location, becomes much more suspicious when the payment
-is large, international, and at night. The interaction multiplies merchant risk,
-`exp(-tenure / 180)`, and capped distance. Amount at least $150, night-time, and
-international status each use a factor of 1 when present and 0.5 otherwise.
-`compound_risk_weight: 12.0` weights that interaction in the simulated log odds.
-The generator includes a 0.2% mixture of payments covering these combinations
-and partial variants; their labels are still probabilistic. Training learns the
-same interaction from those examples. The overall baseline fraud target stays
-at 0.2%; it does not constrain every individual payment to a low probability.
-These thresholds and coefficients are demo choices, not proven fraud rules.
-The research handbook's [simulator](https://fraud-detection-handbook.github.io/fraud-detection-handbook/Chapter_3_GettingStarted/SimulatedDataset.html)
-is useful background on rare labels and controlled fraud scenarios.
+The simulator and new models share continuous risk curves. Amount, distance, and
+attempts use `x² × (3 − 2x)` with `x` clamped to 0–1; their saturation points are
+$300, 200 km, and 20 attempts respectively. Both the value and slope join smoothly
+at each endpoint. There is no switch at $150 or 10 attempts. The small-payment
+interaction with repeated attempts is strongest up to $5, fades between $5 and
+$30, and is zero above $30. The card-testing scenario still injects attacks at
+$10 or less; this defines the simulated attack population, not an inference cutoff.
+
+Hour uses one circular night-time curve, peaking from 23:00 through 05:00 and
+fading to zero at 10:00 and 18:00. Midnight is continuous with the previous hour.
+Training no longer fits 24 unrelated hourly coefficients from rare fraud labels.
+
+Combined risk multiplies merchant risk, `exp(-tenure / 180)`, and the same smooth
+distance curve. Amount and night-time each contribute a gradual multiplier from
+0.5 to 1; international status contributes 0.5 or 1. The configured
+`compound_risk_weight: 12.0` weights this interaction in simulated log odds.
+The generator includes a 0.2% mixture of jointly risky payments and partial
+variants; labels remain probabilistic. Overall expected baseline fraud remains
+0.2%; individual transactions may have much higher probabilities.
+
+Training fits L2 logistic regression with nonnegative coefficients on these
+engineered risk contributions and an unrestricted intercept. This keeps higher
+merchant risk, distance, attempts, and international status from reducing risk,
+and keeps longer tenure from increasing it. Amount is intentionally not globally
+monotonic: a repeated $3 payment can resemble card testing more than a $30 payment.
+Above the small-payment region, increasing amount cannot reduce risk.
+These are explicit demo assumptions, not empirically validated fraud rules.
+
+Behavior regression tests cover the reported $149 → $150 case, former cutoffs,
+midnight, input direction, and sensitivity across three baseline seeds and all
+three scenarios. With the default retrained baseline, the reported inputs produce
+approximately **10.08% at $149 and 10.17% at $150**. Existing registered models
+retain their original transforms and predictions, including their old cutoffs.
 
 The dashboard starts with an ordinary $20 payment and one prior attempt. It shows
 actual **fraud probability** from 0–100%, with **Safe** below 50% and **Fraud** at
@@ -306,16 +322,14 @@ release-holdout precision, recall, and flagged fraction. Calibration against
 synthetic labels is not evidence of real-world calibration.
 
 Info icons explain the inputs. Automatic warnings appear only for invalid numbers
-or capped effects (amount at $150, distance at 200 km, attempts at 20).
+or capped effects (amount at $300, distance at 200 km, attempts at 20).
 Editing an input hides the previous result until Predict is clicked again.
 
-**Updating from the step-based attempt model:** regenerate the baseline data,
-retrain, promote, and rebuild/reload the API. Existing registered models keep their
-original transform so their saved coefficients and thresholds are not silently
-reinterpreted. A rollback to one of those models also restores the old 10-attempt step.
-
-The combined-risk update likewise requires regenerating data and retraining;
-reloading an older model alone will not add the learned interaction.
+**Updating to continuous risk curves:** regenerate baseline and current data,
+retrain, promote, and rebuild/reload the API. Reloading an old model alone does not
+apply the update. Versioned transform functions preserve old model semantics;
+rolling back to an older model restores its old behavior. New MLflow runs record
+`risk_features_version: smooth_v2` and `model_type: positive_logreg`.
 
 **Existing installations must regenerate data and retrain:** the old age-based
 models and CSVs are incompatible with the new attempt-count input. Rebuild the

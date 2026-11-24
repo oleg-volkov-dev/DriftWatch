@@ -70,13 +70,13 @@ def test_prediction_meter_and_field_feedback():
     }
     for (const [field, value, expected] of [
       ['dist', 200, 'capped'], ['dist', 1000000, 'capped'],
-      ['amount', 150, 'capped'],
+      ['amount', 300, 'capped'],
       ['attempts', 20, 'capped'], ['attempts', 1001, 'at most'],
       ['hour', 24, '0 to 23'],
       ['risk', 1.1, '0 to 1'],
       ['attempts', 1.5, 'whole number'], ['dist', -1, 'non-negative'],
     ]) assert(fieldWarning(field, value).includes(expected));
-    for (const [field, value] of [['hour', 0], ['hour', 22], ['tenure', 1], ['tenure', 4000], ['amount', 3], ['risk', 0.9]]) {
+    for (const [field, value] of [['hour', 0], ['hour', 22], ['tenure', 1], ['tenure', 4000], ['amount', 3], ['amount', 149], ['amount', 150], ['risk', 0.9]]) {
       assert.equal(fieldWarning(field, value), '');
     }
     for (const [distance, capped] of [[0, false], [199, false], [200, true], [1000, true], [10, false]]) {
