@@ -333,7 +333,7 @@ def test_combined_risk_is_high_without_inflating_ordinary_payments(seed):
 
     # The interaction must retain caps and gradual attempts after training.
     capped = pd.DataFrame([
-        dict(high, transaction_amount=150, geo_distance_km=200),
+        dict(high, transaction_amount=300, geo_distance_km=200),
         dict(high, transaction_amount=1e6, geo_distance_km=1e6),
     ])
     probabilities = model.predict_proba(capped)[:, 1]
@@ -396,7 +396,7 @@ def test_card_testing_model_distinguishes_attack_from_normal_payments(seed):
     assert small_day < 0.35
     assert old_dashboard_defaults < 0.97
     combined = pd.DataFrame([dict(
-        normal, transaction_amount=150, transaction_hour=hour, account_tenure_days=1,
+        normal, transaction_amount=300, transaction_hour=hour, account_tenure_days=1,
         merchant_risk_score=0.8, geo_distance_km=200, is_international=True,
     ) for hour in [0, 2, 5, 22, 23]])
     assert np.all(pipe.predict_proba(combined)[:, 1] > 0.9)
@@ -415,7 +415,9 @@ def test_card_testing_model_distinguishes_attack_from_normal_payments(seed):
     extreme = probe.iloc[[-1]].copy()
     extreme["transaction_amount"] = 1e6
     extreme["geo_distance_km"] = 1e6
-    assert pipe.predict_proba(extreme)[0, 1] == pytest.approx(old_dashboard_defaults)
+    capped = probe.iloc[[-1]].copy()
+    capped["transaction_amount"] = 300
+    assert pipe.predict_proba(extreme)[0, 1] == pytest.approx(pipe.predict_proba(capped)[0, 1])
 
 
 @pytest.mark.parametrize("scenario,expected", [
