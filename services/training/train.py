@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 from mlflow.tracking import MlflowClient
 from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
     brier_score_loss,
@@ -18,14 +17,16 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
+from services.common.estimators import PositiveLogisticRegression
 from services.common.features import (
     COMPOUND_FEATURES,
-    amount_distance_risk,
-    compound_payment_risk,
+    amount_distance_risk_v2,
+    compound_payment_risk_v2,
     new_account_risk,
-    smooth_payment_activity,
+    night_risk_v2,
+    payment_activity_v2,
 )
 from services.common.logging import configure_logging, get_logger
 
@@ -85,28 +86,28 @@ def build_pipeline() -> Pipeline:
                 ["merchant_risk_score"],
             ),
             (
-                "amount_distance", FunctionTransformer(amount_distance_risk),
+                "amount_distance", FunctionTransformer(amount_distance_risk_v2),
                 ["transaction_amount", "geo_distance_km"],
             ),
             (
-                "activity", FunctionTransformer(smooth_payment_activity),
+                "activity", FunctionTransformer(payment_activity_v2),
                 ["transaction_amount", "payment_attempts_1h"],
             ),
             (
                 "compound",
                 Pipeline([
-                    ("risk", FunctionTransformer(compound_payment_risk)),
+                    ("risk", FunctionTransformer(compound_payment_risk_v2)),
                     ("scale", StandardScaler()),
                 ]),
                 COMPOUND_FEATURES,
             ),
-            ("hour", OneHotEncoder(categories=[list(range(24))]), ["transaction_hour"]),
+            ("hour", FunctionTransformer(night_risk_v2), ["transaction_hour"]),
             ("tenure", FunctionTransformer(new_account_risk), ["account_tenure_days"]),
-            ("bool", OneHotEncoder(handle_unknown="ignore"), FEATURES_BOOL),
+            ("bool", "passthrough", FEATURES_BOOL),
         ],
         remainder="drop",
     )
-    clf = LogisticRegression(max_iter=500, n_jobs=1)
+    clf = PositiveLogisticRegression()
     return Pipeline([("pre", pre), ("clf", clf)])
 
 
@@ -220,7 +221,8 @@ def train_and_log(reference_csv: str, compare_production: bool = False) -> Train
                     candidate_brier_score=metrics["brier_score"],
                     production_brier_score=production_metrics["brier_score"],
                 )
-        mlflow.log_param("model_type", "logreg")
+        mlflow.log_param("model_type", "positive_logreg")
+        mlflow.log_param("risk_features_version", "smooth_v2")
         mlflow.log_param("features_num", ",".join(FEATURES_NUM))
         mlflow.log_param("features_bool", ",".join(FEATURES_BOOL))
 

@@ -7,6 +7,7 @@ from threading import Lock
 from typing import Optional
 
 import mlflow
+import mlflow.sklearn
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from mlflow.tracking import MlflowClient

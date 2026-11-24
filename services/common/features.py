@@ -12,6 +12,7 @@ NEW_ACCOUNT_DECAY_DAYS = 180.0
 SMALL_PAYMENT_THRESHOLD = 10.0
 RAPID_ATTEMPTS_THRESHOLD = 10
 ATTEMPTS_SATURATION = 20.0
+AMOUNT_SATURATION = 300.0
 COMPOUND_FEATURES = [
     "transaction_amount", "transaction_hour", "account_tenure_days",
     "merchant_risk_score", "geo_distance_km", "is_international",
@@ -78,3 +79,54 @@ def decision_threshold(model):
     if not np.isfinite(value) or not 0 <= value <= 1:
         raise ValueError("Invalid model decision threshold")
     return value
+
+
+# Versioned functions: existing MLflow pickles reference the legacy functions
+# above by name. Never reinterpret their fitted coefficients on reload/rollback.
+def smoothstep(values):
+    fraction = np.clip(np.asarray(values, dtype=float), 0, 1)
+    return fraction * fraction * (3 - 2 * fraction)
+
+
+def amount_distance_risk_v2(values):
+    """Gradual amount/distance effects with zero slope at either cap."""
+    values = np.asarray(values, dtype=float)
+    return np.column_stack([
+        smoothstep(values[:, 0] / AMOUNT_SATURATION),
+        smoothstep(values[:, 1] / DISTANCE_SCALE_KM),
+    ])
+
+
+def night_risk_v2(hours):
+    """Circular local time: overnight peak, gradual morning/evening shoulders.
+
+    Peak from 23:00 to 05:00, fading to zero at 10:00 and 18:00.
+    Midnight is adjacent to 23:00, rather than a separate learned category.
+    """
+    hours = np.asarray(hours, dtype=float)
+    distance = np.abs((hours - 2 + 12) % 24 - 12)
+    return 1 - smoothstep((distance - 3) / 5)
+
+
+def payment_activity_v2(values):
+    """Repeated small payments fade gradually between $5 and $30."""
+    values = np.asarray(values, dtype=float)
+    activity = smoothstep(values[:, 1] / ATTEMPTS_SATURATION)
+    small_payment = 1 - smoothstep((values[:, 0] - 5) / 25)
+    return np.column_stack([activity, activity * small_payment])
+
+
+def compound_payment_risk_v2(values):
+    """Use the same continuous curves for individual and combined effects."""
+    values = np.asarray(values, dtype=float)
+    amount, hour, tenure, merchant, distance, international = values.T
+    amount_distance = amount_distance_risk_v2(np.column_stack([amount, distance]))
+    combined = (
+        np.clip(merchant, 0, 1)
+        * new_account_risk(tenure)
+        * amount_distance[:, 1]
+        * (0.5 + 0.5 * amount_distance[:, 0])
+        * (0.5 + 0.5 * night_risk_v2(hour))
+        * np.where(international, 1.0, 0.5)
+    )
+    return combined.reshape(-1, 1)
