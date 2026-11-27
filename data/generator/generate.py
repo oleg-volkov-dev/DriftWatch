@@ -57,8 +57,8 @@ class FraudLogic:
     compound_risk_weight: float = 12.0
 
 
-# Convert any number to value between 0 and 1 (get probability from the score)
 def _sigmoid(x: np.ndarray) -> np.ndarray:
+    """Convert log odds to probabilities without overflowing at extreme scores."""
     return np.exp(-np.logaddexp(0.0, -np.asarray(x, dtype=float)))
 
 
@@ -75,15 +75,17 @@ def baseline_features(rng, n):
     attempts = rng.poisson(0.5, n)
     burst = rng.random(n) < 0.01
     attempts[burst] = rng.integers(10, 31, burst.sum())
-    data = pd.DataFrame({
-        "transaction_amount": np.clip(rng.lognormal(4.2, 0.6, n), 1, 5000),
-        "transaction_hour": rng.integers(0, 24, n),
-        "payment_attempts_1h": attempts,
-        "account_tenure_days": np.clip(rng.gamma(2, 180, n).round(), 1, 3650).astype(int),
-        "merchant_risk_score": np.clip(rng.beta(2, 5, n) + 0.05, 0, 1),
-        "geo_distance_km": np.clip(rng.lognormal(3.2, 0.7, n), 0, 2000),
-        "is_international": rng.random(n) < 0.12,
-    })
+    data = pd.DataFrame(
+        {
+            "transaction_amount": np.clip(rng.lognormal(4.2, 0.6, n), 1, 5000),
+            "transaction_hour": rng.integers(0, 24, n),
+            "payment_attempts_1h": attempts,
+            "account_tenure_days": np.clip(rng.gamma(2, 180, n).round(), 1, 3650).astype(int),
+            "merchant_risk_score": np.clip(rng.beta(2, 5, n) + 0.05, 0, 1),
+            "geo_distance_km": np.clip(rng.lognormal(3.2, 0.7, n), 0, 2000),
+            "is_international": rng.random(n) < 0.12,
+        }
+    )
     # Independent marginals almost never produce new accounts simultaneously
     # far from home, at risky merchants, making the dashboard's joint examples
     # unsupported extrapolation. Cover those combinations and partial variants.
@@ -208,7 +210,7 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
             merchant_risk_shift=risk_shift,
         )
 
-    # Time-window shocks: shopping surges or small card-testing transactions.
+    # Apply the shock to a fraction of payments in the configured hours.
     if is_shock:
         is_spike = np.isin(transaction_hour, spike_hours)
         # Keep ordinary traffic in the attack window so hour alone does not
@@ -242,15 +244,17 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
             affected_transactions=int(is_affected.sum()),
         )
 
-    df = pd.DataFrame({
-        "transaction_amount": transaction_amount,
-        "transaction_hour": transaction_hour,
-        "payment_attempts_1h": payment_attempts_1h,
-        "account_tenure_days": account_tenure_days,
-        "merchant_risk_score": merchant_risk_score,
-        "geo_distance_km": geo_distance_km,
-        "is_international": is_international,
-    })
+    df = pd.DataFrame(
+        {
+            "transaction_amount": transaction_amount,
+            "transaction_hour": transaction_hour,
+            "payment_attempts_1h": payment_attempts_1h,
+            "account_tenure_days": account_tenure_days,
+            "merchant_risk_score": merchant_risk_score,
+            "geo_distance_km": geo_distance_km,
+            "is_international": is_international,
+        }
+    )
     # Calibrate against a fixed independent baseline, never the current batch.
     # Thus a changed population or attack can change the observed fraud rate.
     intercept = baseline_intercept(logic)
@@ -260,7 +264,9 @@ def generate_df(cfg: Dict[str, Any]) -> pd.DataFrame:
     prob = _sigmoid(score + intercept)
     if is_shock:
         prob = np.clip(
-            prob * np.where(is_affected, float(drift["fraud_spike_multiplier"]), 1.0), 0, 1,
+            prob * np.where(is_affected, float(drift["fraud_spike_multiplier"]), 1.0),
+            0,
+            1,
         )
     is_fraud = rng.random(size=n) < prob
     df["is_fraud"] = is_fraud

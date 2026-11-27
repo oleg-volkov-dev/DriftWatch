@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DriftWatch dashboard server — stdlib only, no extra deps."""
+"""Serve the local dashboard, proxy API calls, and stream allowed Make jobs."""
 
 import json
 import subprocess
@@ -11,7 +11,7 @@ from threading import Lock
 from urllib.parse import urlparse
 
 PORT = 8765
-ROOT = Path(__file__).resolve().parent.parent.parent  # infra/dashboard/ -> infra/ -> project root
+ROOT = Path(__file__).resolve().parents[2]
 API = "http://localhost:8000"
 
 ALLOWED_COMMANDS = {
@@ -38,11 +38,9 @@ SERVICE_MATCHES = {
     "grafana": "grafana",
 }
 
-# ──────────────────────────────────────────────────────────────────────────────
 HTML_PATH = ROOT / "dashboard.html"
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
@@ -65,8 +63,6 @@ class Handler(BaseHTTPRequestHandler):
             self._proxy(f"{API}/reload")
         else:
             self._respond(404, b"Not found")
-
-    # ── Routes ────────────────────────────────────────────────────────────────
 
     def _html(self):
         body = HTML_PATH.read_bytes()
@@ -174,8 +170,6 @@ class Handler(BaseHTTPRequestHandler):
                 proc.wait()
             COMMAND_LOCK.release()
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
     def _sse(self, data: dict):
         self.wfile.write(f"data: {json.dumps(data)}\n\n".encode())
         self.wfile.flush()
@@ -189,7 +183,6 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print(f"DriftWatch dashboard → http://localhost:{PORT}")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
