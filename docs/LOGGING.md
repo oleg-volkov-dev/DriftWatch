@@ -1,163 +1,52 @@
-# Structured Logging
+# Logging
 
-DriftWatch uses `structlog` for professional, structured logging across all services.
+[Back to README](../README.md)
 
-## Features
+Services use `structlog` through
+[`services/common/logging.py`](../services/common/logging.py). Entrypoints
+configure INFO-level output to stdout, with timestamps, logger names, and a
+bound `service` field. Console output uses colors. DEBUG events, including
+prediction details, are filtered out by default.
 
-- **Consistent Format**: All services use the same logging configuration
-- **Structured Data**: Logs include contextual key-value pairs for easy filtering
-- **Color-Coded Output**: Different log levels have distinct colors for readability
-- **Service Identification**: Every log includes the service name (api, training, sentinel, etc.)
-- **Production-Ready**: Can switch to JSON logs for production log aggregation
+## Read logs
 
-## Log Levels
-
-- **DEBUG**: Detailed diagnostic information (prediction details, intermediate steps)
-- **INFO**: Normal operational messages (service starting, tasks completing)
-- **WARNING**: Potential issues detected (drift found, quality gates failed)
-- **ERROR**: Errors that need attention (model not found, training failed)
-
-## Example Logs
-
-### Data Generator
-```
-2026-01-05 15:30:12 [info     ] Starting data generation        n_rows=5000 seed=42 drift_type=feature service=data_generator
-2026-01-05 15:30:12 [info     ] Applied feature drift           amount_scale=1.6 distance_scale=1.8 merchant_risk_shift=0.1 service=data_generator
-2026-01-05 15:30:13 [info     ] Data generation complete        fraud_count=487 fraud_rate=9.7% total_transactions=5000 service=data_generator
-```
-
-### Training Service
-```
-2026-01-05 15:31:45 [info     ] Starting training pipeline      experiment=fraud-demo model_name=fraud_detector service=training
-2026-01-05 15:31:45 [info     ] Loading training data           path=/app/shared/data/reference.csv service=training
-2026-01-05 15:31:45 [info     ] Data loaded                     fraud_rate=9.8% rows=5000 service=training
-2026-01-05 15:31:45 [info     ] Dataset split                   test_size=1000 train_size=4000 service=training
-2026-01-05 15:31:46 [info     ] Model evaluation complete       auc=0.6463 average_precision=0.4410 service=training
-2026-01-05 15:31:46 [info     ] Training pipeline complete      run_id=fa024b7013e540b38442eb8c3842306a service=training
-```
-
-### Monitoring Service
-```
-2026-01-05 15:32:10 [info     ] Starting drift detection        current=/app/shared/data/current.csv reference=/app/shared/data/reference.csv service=monitoring
-2026-01-05 15:32:10 [info     ] Datasets loaded                 current_rows=5000 reference_rows=5000 service=monitoring
-2026-01-05 15:32:12 [info     ] Drift detection complete        drift_ratio=37.5% drifted_features=3 severity=medium total_features=8 service=monitoring
-```
-
-### Control Plane Agents
-
-**Sentinel:**
-```
-2026-01-05 15:32:15 [info     ] Sentinel agent starting analysis report_dir=/app/shared/reports service=control_plane
-2026-01-05 15:32:15 [warning  ] Incident detected               drifted_features=3 drift_ratio=0.375 incident_type=drift recommended_action=retrain_and_evaluate severity=medium service=control_plane
-```
-
-**Planner:**
-```
-2026-01-05 15:32:15 [info     ] Planner agent analyzing sentinel report incident_type=drift severity=medium service=control_plane
-2026-01-05 15:32:15 [info     ] Execution plan created          action=retrain_and_evaluate incident_type=drift severity=medium service=control_plane
-```
-
-**Release Agent:**
-```
-2026-01-05 15:32:20 [info     ] Release agent evaluating latest model experiment=fraud-demo model_name=fraud_detector service=control_plane
-2026-01-05 15:32:20 [info     ] Latest model metrics retrieved  auc=0.6463 average_precision=0.4410 run_id=fa024b7013e540b38442eb8c3842306a service=control_plane
-2026-01-05 15:32:20 [warning  ] Quality gates failed - promotion blocked ap_gap=-0.2410 auc=0.6463 auc_gap=0.0037 average_precision=0.4410 min_average_precision=0.2000 min_auc=0.6500 service=control_plane
-```
-
-Candidates passing those minimums are compared with the pinned Production version
-on the same held-out transactions. `Candidate improved on Production` reports the
-metric differences before promotion. `Candidate did not improve on Production`
-reports failed comparison checks and keeps the baseline; the dashboard explains
-that no sufficient improvement was found. Missing or stale comparison evidence
-stops the release evaluation.
-
-## Viewing Logs
-
-### Local Development
 ```bash
-# View all logs
-make logs
-
-# View specific service
-make api-logs
-
-# View control plane execution
-docker compose --profile jobs run --rm control_plane python /app/services/control_plane/runner.py
+make logs       # Running Compose services
+make api-logs   # Inference API only
+make control   # Run a new control-plane cycle and stream its output
 ```
 
-### Production Mode
+Batch jobs print to the invoking terminal. In the dashboard, expand **Technical
+output** in the progress panel. To inspect decisions after a job exits, use the
+JSON files listed in [Operations](OPERATIONS.md#services-and-stored-data).
 
-For production, enable JSON logs for log aggregation (ELK, Splunk, etc.):
+Useful release events include `Quality gates failed - promotion blocked`,
+`Candidate did not improve on Production`, and `Candidate improved on Production`.
+Comparison events include metric differences and failed checks. A retained
+baseline can be a successful policy decision, rather than a job failure.
+
+The dashboard parses lifecycle event names to track progress. Keep them stable,
+or update the parser and progress tests with any rename.
+
+## Add a logger
+
+Configure logging once at the service entrypoint, then obtain module loggers:
 
 ```python
-# In each service
-configure_logging("service_name", json_logs=True)
-```
+from services.common.logging import configure_logging, get_logger
 
-JSON output:
-```json
-{
-  "event": "Model evaluation complete",
-  "auc": "0.6463",
-  "average_precision": "0.4410",
-  "service": "training",
-  "timestamp": "2026-01-05T15:31:46.123456Z",
-  "level": "info"
-}
-```
-
-## Adding Logging to New Code
-
-```python
-from services.common.logging import get_logger
-
+configure_logging("training")
 logger = get_logger(__name__)
-
-# Simple message
-logger.info("Task started")
-
-# With context
-logger.info("Processing transaction",
-            transaction_id=123,
-            amount=250.00,
-            is_fraud=True)
-
-# Warnings
-logger.warning("Threshold exceeded",
-               current_value=0.95,
-               threshold=0.90)
-
-# Errors with exception info
-try:
-    risky_operation()
-except Exception as e:
-    logger.error("Operation failed", error=str(e), exc_info=True)
+logger.info("Model evaluated", run_id=run_id, auc=auc, evaluation_rows=rows)
 ```
 
-## Best Practices
+Keep the event message short and place context in fields. Use INFO for normal
+progress, WARNING for handled problems or blocked releases, and ERROR for failed
+operations. Include run/model/version identifiers when available. Avoid logging
+credentials, tokens, or individual payment details. Keep numeric fields numeric
+when downstream consumers need to aggregate them.
 
-1. **Use Structured Data**: Always include relevant context as key-value pairs
-   ```python
-   # Good
-   logger.info("Model trained", auc=0.85, training_time_seconds=42)
-
-   # Avoid
-   logger.info(f"Model trained with AUC {auc} in {time}s")
-   ```
-
-2. **Choose Appropriate Levels**:
-   - INFO: Normal flow (started, completed, loaded)
-   - WARNING: Unexpected but handled (drift detected, gates failed)
-   - ERROR: Actual failures (file not found, network error)
-
-3. **Don't Log Sensitive Data**: Never log PII, credentials, or tokens
-
-4. **Format Numbers Consistently**:
-   ```python
-   logger.info("Metrics", auc=f"{auc:.4f}", fraud_rate=f"{rate:.1%}")
-   ```
-
-5. **Include Identifiers**: Always log IDs for traceability
-   ```python
-   logger.info("Training started", run_id=run.info.run_id, experiment=exp_name)
-   ```
+For JSON output, change the entrypoint call to
+`configure_logging("training", json_logs=True)`. This is a Python configuration
+option; there is no `JSON_LOGS` environment switch. It changes log rendering,
+not the service's deployment or security properties.
