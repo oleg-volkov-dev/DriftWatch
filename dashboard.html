@@ -534,26 +534,41 @@
   class RunProgress {
     constructor(command) {
       const scenarios = {
-        'demo-drift-feature': 'Feature drift', 'demo-black-friday': 'Black Friday',
+        'demo-drift-feature': 'Feature drift',
+        'demo-black-friday': 'Black Friday',
         'demo-card-testing': 'Card testing',
       };
       const labels = {
-        'gen-base': 'Prepare baseline data', 'gen-feature': 'Create feature-drift data',
-        'gen-blackfriday': 'Create Black Friday data', 'gen-card-testing': 'Create card-testing data',
-        train: 'Train model', 'promote-prod': 'Publish model', monitor: 'Check drift and quality',
-        control: 'Evaluate a replacement', rollback: 'Restore previous model', 'reload-api': 'Load Production model into API',
+        'gen-base': 'Prepare baseline data',
+        'gen-feature': 'Create feature-drift data',
+        'gen-blackfriday': 'Create Black Friday data',
+        'gen-card-testing': 'Create card-testing data',
+        train: 'Train model',
+        'promote-prod': 'Publish model',
+        monitor: 'Check drift and quality',
+        control: 'Evaluate a replacement',
+        rollback: 'Restore previous model',
+        'reload-api': 'Load Production model into API',
       };
       this.title = scenarios[command] || labels[command] || 'Run activity';
-      const demo = command in scenarios;
-      this.demo = demo;
-      this.steps = (demo ? [
-        ['base', 'Prepare baseline data'], ['train', 'Train baseline'],
-        ['promote', 'Put baseline in Production'], ['current', 'Create scenario data'],
-        ['monitor', 'Check drift and quality'], ['control', 'Evaluate a replacement'],
+      this.demo = command in scenarios;
+
+      const stepIds = {
+        'gen-base': 'base',
+        'promote-prod': 'promote',
+        'reload-api': 'reload',
+      };
+      const stepId = stepIds[command] || (command.startsWith('gen-') ? 'current' : command);
+      const steps = this.demo ? [
+        ['base', 'Prepare baseline data'],
+        ['train', 'Train baseline'],
+        ['promote', 'Put baseline in Production'],
+        ['current', 'Create scenario data'],
+        ['monitor', 'Check drift and quality'],
+        ['control', 'Evaluate a replacement'],
         ['reload', 'Load Production model into API'],
-      ] : [[command === 'gen-base' ? 'base' : command.startsWith('gen-') ? 'current'
-        : command === 'promote-prod' ? 'promote' : command === 'reload-api' ? 'reload'
-        : command, this.title]]).map(([id, label]) => ({id, label, state: 'pending', detail: ''}));
+      ] : [[stepId, this.title]];
+      this.steps = steps.map(([id, label]) => ({id, label, state: 'pending', detail: ''}));
       this.active = 0;
       this.steps[0].state = 'running';
       this.outcome = '';
@@ -633,9 +648,11 @@
       const step = this.steps[this.active];
       if (step.id === 'control' && this.outcome) step.detail = this.outcome;
       if (line.includes('Dataset saved') && ['base', 'current'].includes(step.id)) {
-        step.state = 'done'; step.detail = 'Data ready.';
+        step.state = 'done';
+        step.detail = 'Data ready.';
       } else if (line.includes('Training pipeline complete') && step.id === 'train') {
-        step.state = 'done'; step.detail = 'Model trained.';
+        step.state = 'done';
+        step.detail = 'Model trained.';
       } else if (line.includes('Model promoted successfully') && step.id === 'promote') {
         this.productionVersion = version;
         if (this.demo) {
@@ -645,12 +662,15 @@
         step.state = 'done';
         step.detail = `${this.modelName(this.demo ? 'Baseline' : 'Model', version)} promoted to Production.`;
       } else if (line.includes('Reports saved') && step.id === 'monitor') {
-        step.state = 'done'; step.detail = 'Analysis ready.';
+        step.state = 'done';
+        step.detail = 'Analysis ready.';
       } else if (line.includes('Model reloaded:') && step.id === 'reload') {
         this.servingVersion = line.match(/Model reloaded: .*? v(\d+)\b/)?.[1] || '';
-        const name = this.servingVersion && this.servingVersion === this.baselineVersion
-          ? 'baseline' : this.servingVersion && this.servingVersion === this.candidateVersion
-          ? 'candidate' : 'model';
+        let name = 'model';
+        if (this.servingVersion) {
+          if (this.servingVersion === this.baselineVersion) name = 'baseline';
+          else if (this.servingVersion === this.candidateVersion) name = 'candidate';
+        }
         step.state = 'done';
         step.detail = this.servingVersion
           ? `API now serving ${this.modelName(name, this.servingVersion)}.`

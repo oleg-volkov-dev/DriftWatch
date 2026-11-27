@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "driftwatch"
 version = "0.1.0"
-description = "Autonomous MLOps platform for fraud detection with policy-driven drift response"
+description = "Local MLOps demo for drift detection and policy-controlled model promotion"
 requires-python = ">=3.11"
 dependencies = []
 

@@ -20,8 +20,8 @@ RUN_JOB := docker compose --profile jobs run --build --rm
 
 help:
 	@echo "Targets:"
-	@echo "  up                 Start core services (mlflow, api, prometheus, grafana)"
-	@echo "  down               Stop and remove containers + volumes"
+	@echo "  up                 Start core services and open dashboard (macOS)"
+	@echo "  down               Remove containers + volumes, including MLflow history"
 	@echo "  build              Build images"
 	@echo "  logs               Tail logs for all running services"
 	@echo "  api-logs           Tail API logs"
@@ -29,17 +29,18 @@ help:
 	@echo "  gen-base           Generate reference dataset -> shared/data/reference.csv"
 	@echo "  gen-feature        Generate current dataset (feature drift) -> shared/data/current.csv"
 	@echo "  gen-blackfriday    Generate current dataset (shock) -> shared/data/current.csv"
-	@echo "  gen-card-testing  Generate current dataset (card-testing shock) -> shared/data/current.csv"
+	@echo "  gen-card-testing   Generate current dataset (card-testing shock) -> shared/data/current.csv"
 	@echo ""
 	@echo "  train              Train + register model to MLflow"
-	@echo "  promote-prod       Promote latest model version to Production"
+	@echo "  promote-prod       Manually promote latest model to Production (bypasses gates)"
 	@echo "  monitor            Run drift monitoring (Evidently) -> shared/reports/"
 	@echo "  control            Run control plane (Sentinel -> Planner -> Release)"
+	@echo "  reload-api         Load the Production model into the API"
 	@echo "  rollback           Roll back to the previous Production model version"
 	@echo ""
 	@echo "  demo-drift-feature End-to-end demo: feature drift"
 	@echo "  demo-black-friday  End-to-end demo: shock event"
-	@echo "  demo-card-testing End-to-end demo: card-testing attack"
+	@echo "  demo-card-testing  End-to-end demo: card-testing attack"
 	@echo ""
 	@echo "  clean-shared       Remove generated files in this project’s shared directory"
 	@echo ""
@@ -51,8 +52,8 @@ help:
 	@echo "  lint               Run linting checks (ruff, mypy)"
 	@echo "  test               Run tests with coverage"
 	@echo "  test-grafana       Validate Grafana queries with Prometheus fixtures (Docker)"
-	@echo "  check              Run all quality checks (format + lint + test)"
-	@echo "  ci-local           Simulate CI pipeline locally"
+	@echo "  check              Run format + lint + test + test-grafana"
+	@echo "  ci-local           Run lint, tests, and Docker builds"
 
 dashboard:
 	@-[ -f .dashboard.pid ] && kill $$(cat .dashboard.pid) 2>/dev/null; rm -f .dashboard.pid
