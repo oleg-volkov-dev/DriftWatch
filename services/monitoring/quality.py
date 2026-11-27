@@ -47,9 +47,21 @@ def monitoring_policy(policy: dict) -> dict:
 
 def labels(data: pd.DataFrame) -> pd.Series:
     raw = data.get("is_fraud", pd.Series(np.nan, index=data.index))
-    parsed = raw.astype(str).str.strip().str.lower().map({
-        "true": 1.0, "false": 0.0, "1": 1.0, "0": 0.0, "1.0": 1.0, "0.0": 0.0,
-    })
+    parsed = (
+        raw.astype(str)
+        .str.strip()
+        .str.lower()
+        .map(
+            {
+                "true": 1.0,
+                "false": 0.0,
+                "1": 1.0,
+                "0": 0.0,
+                "1.0": 1.0,
+                "0.0": 0.0,
+            }
+        )
+    )
     if (raw.notna() & parsed.isna()).any():
         raise ValueError("Monitoring labels must be booleans, 0/1, or missing")
     return parsed
@@ -72,10 +84,15 @@ def _metrics(y: np.ndarray, probability: np.ndarray, threshold: float) -> tuple[
         mean_score = float(probability[selected].mean())
         fraction_positive = float(y[selected].mean())
         calibration_error += count / len(y) * abs(mean_score - fraction_positive)
-        bins.append({
-            "lower": index / 10, "upper": (index + 1) / 10, "count": count,
-            "mean_probability": mean_score, "fraud_rate": fraction_positive,
-        })
+        bins.append(
+            {
+                "lower": index / 10,
+                "upper": (index + 1) / 10,
+                "count": count,
+                "mean_probability": mean_score,
+                "fraud_rate": fraction_positive,
+            }
+        )
     return {
         "precision": tp / int(predicted.sum()) if predicted.any() else None,
         "recall": tp / int(positive.sum()) if positive.any() else None,
@@ -108,9 +125,12 @@ def evaluate_window(data: pd.DataFrame, model, policy: dict) -> dict:
     count = len(y)
     positives = int(y.sum())
     result: dict = {
-        "rows": len(data), "labeled_rows": count, "positive_rows": positives,
+        "rows": len(data),
+        "labeled_rows": count,
+        "positive_rows": positives,
         "label_coverage": count / len(data) if len(data) else 0.0,
-        "status": "insufficient_labels", "metrics": {},
+        "status": "insufficient_labels",
+        "metrics": {},
     }
     if count >= policy["min_labeled_rows"]:
         result["metrics"]["fraud_rate"] = float(y.mean())
@@ -145,9 +165,16 @@ def assess_quality(reference: pd.DataFrame, current: pd.DataFrame, model, policy
             continue
         change = (after - before) * direction if direction else abs(after - before)
         if change > limit:
-            alerts.append({
-                "kind": "outcome_shift" if metric == "fraud_rate" else "model_quality",
-                "scope": "overall", "metric": metric, "reference": before, "current": after,
-                "change": change, "threshold": limit, "severity": "medium",
-            })
+            alerts.append(
+                {
+                    "kind": "outcome_shift" if metric == "fraud_rate" else "model_quality",
+                    "scope": "overall",
+                    "metric": metric,
+                    "reference": before,
+                    "current": after,
+                    "change": change,
+                    "threshold": limit,
+                    "severity": "medium",
+                }
+            )
     return {"reference": ref, "current": cur, "alerts": alerts}

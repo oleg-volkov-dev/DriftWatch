@@ -95,7 +95,8 @@ def add_quality_signals(summary, per_feature, reference, current, model, policy)
     quality = assess_quality(reference, current, model, policy)
     alerts = [
         {"kind": "critical_feature", "feature": feature, "severity": "medium"}
-        for feature in policy["critical_features"] if per_feature.get(feature) == 1
+        for feature in policy["critical_features"]
+        if per_feature.get(feature) == 1
     ] + quality.pop("alerts")
     return {
         **summary,
@@ -103,8 +104,7 @@ def add_quality_signals(summary, per_feature, reference, current, model, policy)
         "quality": quality,
         "alerts": alerts,
         "incident_severity": (
-            "medium" if alerts and summary["severity"] in {"none", "low"}
-            else summary["severity"]
+            "medium" if alerts and summary["severity"] in {"none", "low"} else summary["severity"]
         ),
     }
 
@@ -143,29 +143,40 @@ def push_drift_metrics(summary: dict, per_feature: dict[str, int], pushgateway_u
         len(summary.get("alerts", []))
     )
     alert_gauge = Gauge(
-        "monitoring_alert", "Active batch alert (1=active)",
-        ["kind", "scope", "signal"], registry=registry,
+        "monitoring_alert",
+        "Active batch alert (1=active)",
+        ["kind", "scope", "signal"],
+        registry=registry,
     )
     for alert in summary.get("alerts", []):
         alert_gauge.labels(
-            alert["kind"], alert.get("scope", "overall"),
+            alert["kind"],
+            alert.get("scope", "overall"),
             alert.get("metric", alert.get("feature", "")),
         ).set(1)
     quality_gauge = Gauge(
-        "monitoring_quality", "Observed labelled-window metric; undefined values omitted",
-        ["window", "scope", "metric"], registry=registry,
+        "monitoring_quality",
+        "Observed labelled-window metric; undefined values omitted",
+        ["window", "scope", "metric"],
+        registry=registry,
     )
     available = Gauge(
-        "monitoring_quality_available", "Enough labels and an evaluated model (1=yes)",
-        ["window", "scope"], registry=registry,
+        "monitoring_quality_available",
+        "Enough labels and an evaluated model (1=yes)",
+        ["window", "scope"],
+        registry=registry,
     )
     coverage = Gauge(
-        "monitoring_label_coverage", "Fraction of rows with observed labels",
-        ["window", "scope"], registry=registry,
+        "monitoring_label_coverage",
+        "Fraction of rows with observed labels",
+        ["window", "scope"],
+        registry=registry,
     )
     support = Gauge(
-        "monitoring_labeled_rows", "Number of observed labels",
-        ["window", "scope"], registry=registry,
+        "monitoring_labeled_rows",
+        "Number of observed labels",
+        ["window", "scope"],
+        registry=registry,
     )
     for window, results in summary.get("quality", {}).items():
         scopes = {"overall": results["overall"]}
@@ -187,9 +198,12 @@ def main() -> None:
     ap.add_argument("--current", required=True)
     ap.add_argument("--report-dir", default="/app/shared/reports")
     ap.add_argument("--pushgateway", default=os.environ.get("PUSHGATEWAY_URL", ""))
-    ap.add_argument("--policy", default=os.environ.get(
-        "POLICY_PATH", str(Path(__file__).parents[1] / "control_plane/policies/promotion.yaml")
-    ))
+    ap.add_argument(
+        "--policy",
+        default=os.environ.get(
+            "POLICY_PATH", str(Path(__file__).parents[1] / "control_plane/policies/promotion.yaml")
+        ),
+    )
     args = ap.parse_args()
     policy = monitoring_policy(load_policy(args.policy))
 

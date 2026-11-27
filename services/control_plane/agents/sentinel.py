@@ -40,9 +40,11 @@ def run_sentinel(report_dir: str = "/app/shared/reports") -> SentinelReport:
     alerts = summary.get("alerts", [])
     if alerts and severity in {"none", "low"}:
         severity = "medium"
-    incident_type = "model_quality" if any(
-        a.get("kind") in {"model_quality", "outcome_shift"} for a in alerts
-    ) else "drift"
+    incident_type = (
+        "model_quality"
+        if any(a.get("kind") in {"model_quality", "outcome_shift"} for a in alerts)
+        else "drift"
+    )
 
     if severity in ("none", "low"):
         logger.info("No actionable incidents detected", severity=severity)

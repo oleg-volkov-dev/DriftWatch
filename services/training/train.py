@@ -86,19 +86,23 @@ def build_pipeline() -> Pipeline:
                 ["merchant_risk_score"],
             ),
             (
-                "amount_distance", FunctionTransformer(amount_distance_risk_v2),
+                "amount_distance",
+                FunctionTransformer(amount_distance_risk_v2),
                 ["transaction_amount", "geo_distance_km"],
             ),
             (
-                "activity", FunctionTransformer(payment_activity_v2),
+                "activity",
+                FunctionTransformer(payment_activity_v2),
                 ["transaction_amount", "payment_attempts_1h"],
             ),
             (
                 "compound",
-                Pipeline([
-                    ("risk", FunctionTransformer(compound_payment_risk_v2)),
-                    ("scale", StandardScaler()),
-                ]),
+                Pipeline(
+                    [
+                        ("risk", FunctionTransformer(compound_payment_risk_v2)),
+                        ("scale", StandardScaler()),
+                    ]
+                ),
                 COMPOUND_FEATURES,
             ),
             ("hour", FunctionTransformer(night_risk_v2), ["transaction_hour"]),
@@ -116,8 +120,12 @@ def select_threshold(y, probability):
     precision, recall, thresholds = precision_recall_curve(y, probability)
     positives = int(np.asarray(y).sum())
     tp = recall[:-1] * positives
-    fp = np.divide(tp * (1 - precision[:-1]), precision[:-1],
-                   out=np.full_like(tp, np.inf), where=precision[:-1] > 0)
+    fp = np.divide(
+        tp * (1 - precision[:-1]),
+        precision[:-1],
+        out=np.full_like(tp, np.inf),
+        where=precision[:-1] > 0,
+    )
     costs = np.append(fp + 100 * (positives - tp), 100 * positives)
     return float(np.append(thresholds, 1.0)[np.argmin(costs)])
 
@@ -125,14 +133,21 @@ def select_threshold(y, probability):
 def fit_model(data):
     """60% fit, 20% threshold validation, 20% untouched release evaluation."""
     train_validation, holdout = train_test_split(
-        data, test_size=0.2, stratify=data[LABEL], random_state=42,
+        data,
+        test_size=0.2,
+        stratify=data[LABEL],
+        random_state=42,
     )
     train, validation = train_test_split(
-        train_validation, test_size=0.25, stratify=train_validation[LABEL], random_state=43,
+        train_validation,
+        test_size=0.25,
+        stratify=train_validation[LABEL],
+        random_state=43,
     )
     pipe = build_pipeline().fit(train.drop(columns=LABEL), train[LABEL].astype(int))
     pipe.decision_threshold_ = select_threshold(
-        validation[LABEL], pipe.predict_proba(validation.drop(columns=LABEL))[:, 1],
+        validation[LABEL],
+        pipe.predict_proba(validation.drop(columns=LABEL))[:, 1],
     )
     return pipe, holdout
 
@@ -210,7 +225,9 @@ def train_and_log(reference_csv: str, compare_production: bool = False) -> Train
             mlflow.log_param("comparison_production_version", production_version)
             mlflow.log_metric("evaluation_rows", len(X_test))
             if production is not None:
-                production_metrics = evaluation_metrics(y_test, production.predict_proba(X_test)[:, 1])
+                production_metrics = evaluation_metrics(
+                    y_test, production.predict_proba(X_test)[:, 1]
+                )
                 for name, value in production_metrics.items():
                     mlflow.log_metric(f"production_{name}", value)
                 logger.info(

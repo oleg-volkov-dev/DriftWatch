@@ -41,7 +41,12 @@ FRAUD_SCORE = Histogram(
 class Txn(BaseModel):
     transaction_amount: float = Field(..., ge=0, allow_inf_nan=False)
     transaction_hour: int = Field(..., ge=0, le=23)
-    payment_attempts_1h: int = Field(..., ge=0, le=1000, description="Prior payment attempts in the last hour from this session/device")
+    payment_attempts_1h: int = Field(
+        ...,
+        ge=0,
+        le=1000,
+        description="Prior payment attempts in the last hour from this session/device",
+    )
     account_tenure_days: int = Field(..., ge=0)
     merchant_risk_score: float = Field(..., ge=0, le=1)
     geo_distance_km: float = Field(..., ge=0, allow_inf_nan=False)

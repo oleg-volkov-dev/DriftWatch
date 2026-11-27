@@ -8,12 +8,9 @@ from structlog.types import Processor
 
 
 def configure_logging(service_name: str, json_logs: bool = False) -> None:
-    """
-    Configure structured logging for a service.
+    """Write INFO-level logs to stdout and bind the service name to each event.
 
-    Args:
-        service_name: Name of the service (e.g., "api", "training", "sentinel")
-        json_logs: If True, output JSON logs (for production). If False, use human-readable format.
+    Use colored console output by default, or JSON when ``json_logs`` is true.
     """
     processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,
@@ -42,7 +39,7 @@ def configure_logging(service_name: str, json_logs: bool = False) -> None:
         format="%(message)s",
         stream=sys.stdout,
         level=logging.INFO,
-        force=True,  # Force reconfiguration even if already configured
+        force=True,
     )
 
     # Silence noisy third-party libraries
@@ -57,13 +54,5 @@ def configure_logging(service_name: str, json_logs: bool = False) -> None:
 
 
 def get_logger(module_name: str) -> structlog.stdlib.BoundLogger:
-    """
-    Get a logger for a specific module.
-
-    Args:
-        module_name: Usually __name__ of the calling module
-
-    Returns:
-        Configured structured logger
-    """
+    """Return a module logger; callers usually pass ``__name__``."""
     return structlog.get_logger(module_name)

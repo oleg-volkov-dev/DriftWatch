@@ -42,19 +42,26 @@ def compare_production_metrics(metrics: Dict[str, Any], policy: Dict[str, Any]) 
     }
     if not all(math.isfinite(v) and 0 <= v <= 1 for v in values.values()):
         raise ValueError("Invalid comparison metrics")
-    limits = {key: float(policy[key]) for key in (
-        "max_auc_drop", "max_average_precision_drop", "min_relative_brier_improvement",
-    )}
+    limits = {
+        key: float(policy[key])
+        for key in (
+            "max_auc_drop",
+            "max_average_precision_drop",
+            "min_relative_brier_improvement",
+        )
+    }
     if not all(math.isfinite(v) and 0 <= v <= 1 for v in limits.values()):
         raise ValueError("Invalid comparison policy")
     changes = {
         "auc_drop": values["production_auc"] - values["auc"],
-        "average_precision_drop": values["production_average_precision"] - values["average_precision"],
+        "average_precision_drop": values["production_average_precision"]
+        - values["average_precision"],
         "brier_improvement": values["production_brier_score"] - values["brier_score"],
     }
     changes["relative_brier_improvement"] = (
         changes["brier_improvement"] / values["production_brier_score"]
-        if values["production_brier_score"] > 0 else 0.0
+        if values["production_brier_score"] > 0
+        else 0.0
     )
     failed = []
     for name in ("auc", "average_precision"):
@@ -217,8 +224,11 @@ def maybe_promote_latest_if_gates_pass(
     comparison = policy.get("production_comparison")
     if comparison is not None:
         # Even a Staging release compares against the current Production model.
-        compared_version = (previous_production_version if promote_stage == "Production"
-                            else _get_current_production_version(model_name, client))
+        compared_version = (
+            previous_production_version
+            if promote_stage == "Production"
+            else _get_current_production_version(model_name, client)
+        )
         recorded_version = run.data.params.get("comparison_production_version")
         if recorded_version != (compared_version or "none"):
             return ReleaseResult(False, None, {"reason": "missing_or_stale_production_comparison"})
@@ -226,13 +236,20 @@ def maybe_promote_latest_if_gates_pass(
             try:
                 comparison_details = compare_production_metrics(run.data.metrics, comparison)
             except (KeyError, TypeError, ValueError):
-                return ReleaseResult(False, None, {"reason": "missing_or_invalid_comparison_metrics"})
+                return ReleaseResult(
+                    False, None, {"reason": "missing_or_invalid_comparison_metrics"}
+                )
             comparison_details["production_version"] = compared_version
             if comparison_details["failed_checks"]:
                 logger.warning("Candidate did not improve on Production", **comparison_details)
-                return ReleaseResult(False, None, {
-                    "reason": "production_comparison_failed", "comparison": comparison_details,
-                })
+                return ReleaseResult(
+                    False,
+                    None,
+                    {
+                        "reason": "production_comparison_failed",
+                        "comparison": comparison_details,
+                    },
+                )
             logger.info("Candidate improved on Production", **comparison_details)
 
     logger.info(

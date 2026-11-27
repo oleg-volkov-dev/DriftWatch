@@ -3,8 +3,13 @@
 import numpy as np
 
 FEATURES = [
-    "transaction_amount", "transaction_hour", "payment_attempts_1h",
-    "account_tenure_days", "merchant_risk_score", "geo_distance_km", "is_international",
+    "transaction_amount",
+    "transaction_hour",
+    "payment_attempts_1h",
+    "account_tenure_days",
+    "merchant_risk_score",
+    "geo_distance_km",
+    "is_international",
 ]
 HIGH_AMOUNT_THRESHOLD = 150.0
 DISTANCE_SCALE_KM = 200.0
@@ -14,8 +19,12 @@ RAPID_ATTEMPTS_THRESHOLD = 10
 ATTEMPTS_SATURATION = 20.0
 AMOUNT_SATURATION = 300.0
 COMPOUND_FEATURES = [
-    "transaction_amount", "transaction_hour", "account_tenure_days",
-    "merchant_risk_score", "geo_distance_km", "is_international",
+    "transaction_amount",
+    "transaction_hour",
+    "account_tenure_days",
+    "merchant_risk_score",
+    "geo_distance_km",
+    "is_international",
 ]
 
 
@@ -24,11 +33,14 @@ def new_account_risk(tenure_days):
 
 
 def amount_distance_risk(values):
+    """Legacy amount cutoff and linear distance transform for registered models."""
     values = np.asarray(values, dtype=float)
-    return np.column_stack([
-        values[:, 0] >= HIGH_AMOUNT_THRESHOLD,
-        np.clip(values[:, 1] / DISTANCE_SCALE_KM, 0, 1),
-    ])
+    return np.column_stack(
+        [
+            values[:, 0] >= HIGH_AMOUNT_THRESHOLD,
+            np.clip(values[:, 1] / DISTANCE_SCALE_KM, 0, 1),
+        ]
+    )
 
 
 def payment_activity(values):
@@ -42,18 +54,21 @@ def smooth_payment_activity(values):
     """Gradual, bounded attempt effect; no switch at the tenth attempt.
 
     A separate function preserves existing pickles' original feature transform.
-    New models and generated labels use the same smoothstep curve from 0 to 20.
+    Retains the small-payment cutoff used before the v2 transforms.
     """
     values = np.asarray(values, dtype=float)
     fraction = np.clip(values[:, 1] / ATTEMPTS_SATURATION, 0, 1)
     activity = fraction * fraction * (3 - 2 * fraction)
-    return np.column_stack([
-        activity, activity * (values[:, 0] <= SMALL_PAYMENT_THRESHOLD),
-    ])
+    return np.column_stack(
+        [
+            activity,
+            activity * (values[:, 0] <= SMALL_PAYMENT_THRESHOLD),
+        ]
+    )
 
 
 def compound_payment_risk(values):
-    """Bounded interaction for multiple concurrent synthetic risk signals.
+    """Legacy interaction for multiple concurrent synthetic risk signals.
 
     Merchant risk, new-account risk and IP distance multiply; high amount,
     night-time and international status each double that combined contribution.
@@ -91,10 +106,12 @@ def smoothstep(values):
 def amount_distance_risk_v2(values):
     """Gradual amount/distance effects with zero slope at either cap."""
     values = np.asarray(values, dtype=float)
-    return np.column_stack([
-        smoothstep(values[:, 0] / AMOUNT_SATURATION),
-        smoothstep(values[:, 1] / DISTANCE_SCALE_KM),
-    ])
+    return np.column_stack(
+        [
+            smoothstep(values[:, 0] / AMOUNT_SATURATION),
+            smoothstep(values[:, 1] / DISTANCE_SCALE_KM),
+        ]
+    )
 
 
 def night_risk_v2(hours):

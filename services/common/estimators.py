@@ -44,7 +44,10 @@ class PositiveLogisticRegression(ClassifierMixin, BaseEstimator):
         prevalence = y.mean()
         initial[-1] = np.log(prevalence / (1 - prevalence))
         result = minimize(
-            objective, initial, jac=True, method="L-BFGS-B",
+            objective,
+            initial,
+            jac=True,
+            method="L-BFGS-B",
             bounds=[(0, None)] * self.n_features_in_ + [(None, None)],
             options={"maxiter": self.max_iter, "ftol": 1e-12, "gtol": self.tol},
         )
